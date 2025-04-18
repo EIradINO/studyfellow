@@ -1,6 +1,68 @@
+'use client';
+
 import Image from "next/image";
+import { supabase } from '@/utils/supabase';
+import { useState, useEffect } from 'react';
+
+type UserProfile = {
+  display_name: string;
+  user_name: string;
+} | null;
 
 export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile>(null);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+
+        if (session?.user) {
+          const { data: profile, error: profileError } = await supabase
+            .from('users')
+            .select('display_name, user_name')
+            .eq('user_id', session.user.id)
+            .single();
+
+          if (profileError) throw profileError;
+          setUserProfile(profile);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setUserProfile(null);
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-blue-50 dark:from-gray-900 dark:to-gray-800">
       <header className="container mx-auto px-6 py-8">
@@ -9,7 +71,35 @@ export default function Home() {
           <div className="space-x-6">
             <a href="#features" className="text-gray-600 dark:text-gray-300 hover:text-blue-600">特徴</a>
             <a href="#pricing" className="text-gray-600 dark:text-gray-300 hover:text-blue-600">料金</a>
-            <a href="#contact" className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700">無料相談</a>
+            {loading ? (
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            ) : userProfile ? (
+              <div className="flex items-center gap-4">
+                <div className="text-sm">
+                  <p className="font-medium text-gray-900 dark:text-white">{userProfile.display_name}</p>
+                  <p className="text-gray-500 dark:text-gray-400">@{userProfile.user_name}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded-full hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                >
+                  ログアウト
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGoogleLogin}
+                className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path
+                    fill="currentColor"
+                    d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"
+                  />
+                </svg>
+                Googleでログイン
+              </button>
+            )}
           </div>
         </nav>
       </header>
@@ -24,14 +114,19 @@ export default function Home() {
             StudyFellowは、個別指導に特化した家庭教師サービスです。
             一人ひとりの目標と学習スタイルに合わせた、最適な学習環境を提供します。
           </p>
-          <div className="space-x-4">
-            <a href="#contact" className="bg-blue-600 text-white px-8 py-3 rounded-full text-lg hover:bg-blue-700">
-              無料体験を始める
-            </a>
-            <a href="#features" className="border-2 border-blue-600 text-blue-600 px-8 py-3 rounded-full text-lg hover:bg-blue-50">
-              詳しく見る
-            </a>
-          </div>
+          {!userProfile && (
+            <div className="space-x-4">
+              <button
+                onClick={handleGoogleLogin}
+                className="bg-blue-600 text-white px-8 py-3 rounded-full text-lg hover:bg-blue-700"
+              >
+                無料で始める
+              </button>
+              <a href="#features" className="border-2 border-blue-600 text-blue-600 px-8 py-3 rounded-full text-lg hover:bg-blue-50 inline-block">
+                詳しく見る
+              </a>
+            </div>
+          )}
         </section>
 
         <section id="features" className="grid md:grid-cols-3 gap-8 mb-20">
