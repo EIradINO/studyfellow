@@ -1,7 +1,7 @@
-
 [functions.create-document-metadata]
 enabled = true
 verify_jwt = true
+invoke_role = "service_role"
 import_map = "./functions/create-document-metadata/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
