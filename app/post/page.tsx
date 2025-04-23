@@ -51,13 +51,34 @@ export default function Post() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [userDocuments, setUserDocuments] = useState<UserDocuments | null>(null);
-  const [availableDocumentIds, setAvailableDocumentIds] = useState<Set<string>>(new Set());
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<string>('');
   const [startPage, setStartPage] = useState<string>('');
   const [endPage, setEndPage] = useState<string>('');
   const [comment, setComment] = useState('');
+
+  const fetchUserDocuments = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_documents')
+        .select('id, documents')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      // 利用可能なドキュメントIDを収集
+      if (data) {
+        const documentIds = new Set<string>();
+        Object.values(data.documents as Record<string, string[]>).forEach(ids => {
+          ids.forEach(id => documentIds.add(id));
+        });
+        fetchDocuments(Array.from(documentIds));
+      }
+    } catch (error) {
+      console.error('Error fetching user documents:', error);
+    }
+  }, []);
 
   const fetchUserProfile = useCallback(async () => {
     try {
@@ -80,37 +101,12 @@ export default function Post() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchUserDocuments]);
 
   useEffect(() => {
     fetchUserProfile();
     fetchPosts();
   }, [fetchUserProfile]);
-
-  const fetchUserDocuments = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_documents')
-        .select('id, documents')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      setUserDocuments(data || null);
-
-      // 利用可能なドキュメントIDを収集
-      if (data) {
-        const documentIds = new Set<string>();
-        Object.values(data.documents as Record<string, string[]>).forEach(ids => {
-          ids.forEach(id => documentIds.add(id));
-        });
-        setAvailableDocumentIds(documentIds);
-        fetchDocuments(Array.from(documentIds));
-      }
-    } catch (error) {
-      console.error('Error fetching user documents:', error);
-    }
-  };
 
   const fetchDocuments = async (documentIds: string[]) => {
     if (documentIds.length === 0) {
