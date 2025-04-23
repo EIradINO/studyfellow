@@ -28,6 +28,15 @@ type Post = {
   document: {
     file_name: string;
   };
+  messages?: PostMessageToAI[];
+};
+
+type PostMessageToAI = {
+  id: string;
+  post_id: string;
+  content: string;
+  role: string;
+  created_at: string;
 };
 
 type UserDocuments = {
@@ -134,7 +143,13 @@ export default function Post() {
           start_page,
           end_page,
           comment,
-          created_at
+          created_at,
+          post_messages_to_ai (
+            id,
+            content,
+            role,
+            created_at
+          )
         `)
         .order('created_at', { ascending: false });
 
@@ -159,7 +174,14 @@ export default function Post() {
         return {
           ...post,
           user: userData || { display_name: '不明', user_name: '不明' },
-          document: docData || { file_name: '不明' }
+          document: docData || { file_name: '不明' },
+          messages: (post.post_messages_to_ai || []).map(msg => ({
+            id: msg.id,
+            post_id: post.id,
+            content: msg.content,
+            role: msg.role,
+            created_at: msg.created_at
+          }))
         };
       }));
 
@@ -179,7 +201,8 @@ export default function Post() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
+      // 投稿を作成
+      const { data: post, error: postError } = await supabase
         .from('posts')
         .insert([{
           user_id: session.user.id,
@@ -187,17 +210,24 @@ export default function Post() {
           start_page: parseInt(startPage),
           end_page: parseInt(endPage),
           comment: comment.trim()
-        }]);
-
-      if (error) throw error;
-
-      // フォームをリセット
+        }])
+        .select()
+        .single();
+      // 投稿を再取得
+      fetchPosts();
+      if (postError) throw postError;
       setSelectedDocument('');
       setStartPage('');
       setEndPage('');
       setComment('');
 
-      // 投稿を再取得
+      // AIの返信を生成
+      const { error: responseError } = await supabase.functions.invoke('generate-post-response', {
+        body: { post }
+      });
+
+      if (responseError) throw responseError;
+
       fetchPosts();
     } catch (error) {
       console.error('Error creating post:', error);
@@ -378,6 +408,36 @@ export default function Post() {
                 <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                   {post.comment}
                 </p>
+                {post.messages && post.messages.length > 0 && (
+                  <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">AIとの対話</h4>
+                    <div className="space-y-2">
+                      {post.messages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`flex ${
+                            message.role === 'user' ? 'justify-end' : 'justify-start'
+                          }`}
+                        >
+                          <div
+                            className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                              message.role === 'user'
+                                ? 'bg-blue-100 dark:bg-blue-900'
+                                : 'bg-gray-100 dark:bg-gray-700'
+                            }`}
+                          >
+                            <p className="text-sm text-gray-800 dark:text-gray-200">
+                              {message.content}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {new Date(message.created_at).toLocaleString('ja-JP')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 
