@@ -40,13 +40,6 @@ type PostMessageToAI = {
   created_at: string;
 };
 
-type UserDocuments = {
-  id: string;
-  documents: {
-    [key: string]: string[];
-  };
-};
-
 export default function Post() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile>(null);
