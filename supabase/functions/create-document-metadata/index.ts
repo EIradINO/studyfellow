@@ -4,8 +4,8 @@
 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { PDFDocument } from 'pdf-lib'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
