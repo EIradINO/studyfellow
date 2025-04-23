@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
+import Link from 'next/link';
 
 type UserProfile = {
   display_name: string;
@@ -58,12 +59,7 @@ export default function Post() {
   const [endPage, setEndPage] = useState<string>('');
   const [comment, setComment] = useState('');
 
-  useEffect(() => {
-    fetchUserProfile();
-    fetchPosts();
-  }, []);
-
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -84,7 +80,12 @@ export default function Post() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchUserProfile();
+    fetchPosts();
+  }, [fetchUserProfile]);
 
   const fetchUserDocuments = async (userId: string) => {
     try {
@@ -369,12 +370,12 @@ export default function Post() {
               ) : (
                 <div className="text-center text-gray-500 dark:text-gray-400">
                   <p className="mb-4">ライブラリにドキュメントが登録されていません</p>
-                  <a
+                  <Link
                     href="/library"
                     className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                   >
                     ライブラリでドキュメントを登録する
-                  </a>
+                  </Link>
                 </div>
               )}
             </div>
