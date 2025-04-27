@@ -14,8 +14,14 @@ interface DocumentInfo {
   end_page: number;
 }
 
+interface RequestBody {
+  message: string;
+  document?: DocumentInfo;
+  history?: ChatMessage[];
+}
+
 // --- バリデーション関数 ---
-function validateRequestBody(body: any) {
+function validateRequestBody(body: RequestBody) {
   if (!body.message) {
     throw new Error('メッセージが必要です');
   }
@@ -67,6 +73,8 @@ async function fetchUserDailyReport(supabase: SupabaseClient): Promise<string> {
 }
 
 // --- ドキュメントの文脈取得 ---
+type Transcription = { page: number; transcription: string };
+
 async function fetchDocumentContext(supabase: SupabaseClient, document: DocumentInfo): Promise<string> {
   const { data: transcriptions, error } = await supabase
     .from('document_transcriptions')
@@ -80,7 +88,7 @@ async function fetchDocumentContext(supabase: SupabaseClient, document: Document
     throw new Error(`${document.file_name} の ${document.start_page}〜${document.end_page} ページのトランスクリプションが見つかりません`);
   }
   return `以下は${document.file_name}の${document.start_page}ページから${document.end_page}ページまでの内容です：\n\n` +
-    transcriptions.map((t: any) => `[ページ${t.page}]\n${t.transcription}`).join('\n\n') +
+    (transcriptions as Transcription[]).map((t: Transcription) => `[ページ${t.page}]\n${t.transcription}`).join('\n\n') +
     '\n\n上記の内容に基づいて、以下の質問に答えてください。\n\n';
 }
 
