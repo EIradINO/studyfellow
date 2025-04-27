@@ -18,7 +18,7 @@ type Room = {
 type Message = {
   id?: string;
   room_id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'model';
   content: string;
   created_at?: string;
 };
@@ -163,8 +163,12 @@ export default function Home() {
       setNewMessage('');
 
       // チャット履歴を含めてGeminiの応答を生成
-      const { data: response, error: functionError } = await supabase.functions.invoke('generate-response', {
-        body: { 
+      const response = await fetch('/api/generate-response', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           message: newMessage,
           history: messages.map(msg => ({
             role: msg.role,
@@ -175,18 +179,24 @@ export default function Home() {
             start_page: parseInt(startPage),
             end_page: parseInt(endPage)
           } : null
-        }
+        })
       });
 
-      if (functionError) throw functionError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate response');
+      }
+
+      const data = await response.json() as { content: string };
+      const { content } = data;
 
       // アシスタントのメッセージを保存
       const { data: assistantMessage, error: assistantError } = await supabase
         .from('messages')
         .insert([{
           room_id: currentRoom.id,
-          role: 'assistant',
-          content: response.content
+          role: 'model',
+          content: content
         }])
         .select()
         .single();

@@ -59,8 +59,6 @@ export default function Post() {
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
-
-      // 利用可能なドキュメントIDを収集
       if (data) {
         const documentIds = new Set<string>();
         Object.values(data.documents as Record<string, string[]>).forEach(ids => {
@@ -190,8 +188,6 @@ export default function Post() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error('Not authenticated');
-
-      // 投稿を作成
       const { data: post, error: postError } = await supabase
         .from('posts')
         .insert([{
@@ -221,7 +217,7 @@ export default function Post() {
       fetchPosts();
     } catch (error) {
       console.error('Error creating post:', error);
-      alert('投稿の作成に失敗しました');
+      alert(`投稿の作成に失敗しました${error}`);
     }
   };
 
