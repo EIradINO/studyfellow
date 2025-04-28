@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from 'next/server';
 
 // 型定義
@@ -92,6 +92,29 @@ async function fetchDocumentContext(supabase: SupabaseClient, document: Document
     '\n\n上記の内容に基づいて、以下の質問に答えてください。\n\n';
 }
 
+// --- ツール定義 ---
+const weatherFunctionDeclaration = {
+  name: 'get_current_temperature',
+  description: '指定された場所の現在の気温を取得します。',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      location: {
+        type: Type.STRING,
+        description: '都市名（例：東京、大阪）',
+      },
+    },
+    required: ['location'],
+  },
+};
+
+// --- ツール実行関数 ---
+async function getCurrentTemperature(location: string): Promise<number> {
+  // 実際のアプリケーションでは、ここで天気APIを呼び出す
+  // 今回はランダムな気温を返す
+  return Math.floor(Math.random() * 30) + 10; // 10-40度の範囲でランダムな気温
+}
+
 // --- メインAPIエンドポイント ---
 export async function POST(req: Request) {
   try {
@@ -110,18 +133,42 @@ export async function POST(req: Request) {
     }
 
     const chat = genAI.chats.create({
-        model: "gemini-1.5-flash",
-        config: {
-            systemInstruction: systemInstruction,
-        },
-        history: body.history?.map((msg: ChatMessage) => ({
-            role: msg.role,
-            parts: [{ text: msg.content }]
-        })),
-    })
-    const response = await chat.sendMessage({message: context + body.message});
-    const text = response.text;
-    return NextResponse.json({ content: text });
+      model: "gemini-2.0-flash",
+      config: {
+        systemInstruction: systemInstruction,
+        tools: [{
+          functionDeclarations: [weatherFunctionDeclaration]
+        }],
+      },
+      history: body.history?.map((msg: ChatMessage) => ({
+        role: msg.role,
+        parts: [{ text: msg.content }]
+      })),
+    });
+
+    const response = await chat.sendMessage({ message: context + body.message });
+    
+    // ツール呼び出しの処理
+    if (response.functionCalls && response.functionCalls.length > 0) {
+      const functionCall = response.functionCalls[0];
+      if (functionCall.name === 'get_current_temperature' && 
+          functionCall.args && 
+          typeof functionCall.args === 'object' && 
+          'location' in functionCall.args && 
+          typeof functionCall.args.location === 'string') {
+        const temperature = await getCurrentTemperature(functionCall.args.location);
+        return NextResponse.json({ 
+          content: `${functionCall.args.location}の現在の気温は${temperature}度です。`,
+          function_call: {
+            name: functionCall.name,
+            args: functionCall.args,
+            result: temperature
+          }
+        });
+      }
+    }
+
+    return NextResponse.json({ content: response.text });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '不明なエラーが発生しました';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
