@@ -30,6 +30,7 @@ type Post = {
     file_name: string;
   };
   messages?: PostMessageToAI[];
+  duration?: number;
 };
 
 type PostMessageToAI = {
@@ -49,22 +50,23 @@ export default function Post() {
   const [startPage, setStartPage] = useState<string>('');
   const [endPage, setEndPage] = useState<string>('');
   const [comment, setComment] = useState('');
+  const [durationHour, setDurationHour] = useState('');
+  const [durationMinute, setDurationMinute] = useState('');
 
   const fetchUserDocuments = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('user_documents')
-        .select('id, documents')
-        .eq('user_id', userId)
-        .single();
+        .select('document_id')
+        .eq('user_id', userId);
 
-      if (error && error.code !== 'PGRST116') throw error;
-      if (data) {
-        const documentIds = new Set<string>();
-        Object.values(data.documents as Record<string, string[]>).forEach(ids => {
-          ids.forEach(id => documentIds.add(id));
-        });
-        fetchDocuments(Array.from(documentIds));
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const documentIds = data.map(ud => ud.document_id);
+        fetchDocuments(documentIds);
+      } else {
+        setDocuments([]);
       }
     } catch (error) {
       console.error('Error fetching user documents:', error);
@@ -137,7 +139,8 @@ export default function Post() {
             content,
             role,
             created_at
-          )
+          ),
+          duration
         `)
         .order('created_at', { ascending: false });
 
@@ -169,7 +172,8 @@ export default function Post() {
             content: msg.content,
             role: msg.role,
             created_at: msg.created_at
-          }))
+          })),
+          duration: post.duration
         };
       }));
 
@@ -185,6 +189,11 @@ export default function Post() {
       return;
     }
 
+    // durationの計算
+    const duration =
+      (parseInt(durationHour || '0', 10) * 60) +
+      (parseInt(durationMinute || '0', 10));
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error('Not authenticated');
@@ -195,7 +204,8 @@ export default function Post() {
           document_id: selectedDocument,
           start_page: parseInt(startPage),
           end_page: parseInt(endPage),
-          comment: comment.trim()
+          comment: comment.trim(),
+          duration: duration
         }])
         .select()
         .single();
@@ -206,6 +216,8 @@ export default function Post() {
       setStartPage('');
       setEndPage('');
       setComment('');
+      setDurationHour('');
+      setDurationMinute('');
 
       // AIの返信を生成
       const { error: responseError } = await supabase.functions.invoke('generate-post-response', {
@@ -344,6 +356,36 @@ export default function Post() {
                     />
                   </div>
 
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        時間
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={durationHour}
+                        onChange={(e) => setDurationHour(e.target.value)}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        分
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={durationMinute}
+                        onChange={(e) => setDurationMinute(e.target.value)}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
                   <button
                     onClick={handleCreatePost}
                     disabled={!selectedDocument || !startPage || !endPage || !comment.trim()}
@@ -389,6 +431,11 @@ export default function Post() {
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     ページ {post.start_page} - {post.end_page}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {post.duration !== undefined && post.duration !== null
+                      ? `${Math.floor(post.duration / 60)}時間${post.duration % 60}分`
+                      : ''}
                   </p>
                 </div>
                 <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">

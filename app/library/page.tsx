@@ -13,18 +13,23 @@ type Document = {
   file_name: string;
 };
 
-type UserDocuments = {
+type Tag = {
   id: string;
-  documents: {
-    [key: string]: string[];
-  };
+  name: string;
+};
+
+type UserDocument = {
+  id: string;
+  document_id: string;
+  tag_id: string;
 };
 
 export default function Library() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [userDocuments, setUserDocuments] = useState<UserDocuments | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [userDocuments, setUserDocuments] = useState<UserDocument[]>([]);
   const [newTag, setNewTag] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
@@ -48,12 +53,118 @@ export default function Library() {
 
         if (profileError) throw profileError;
         setUserProfile(profile);
+        fetchUserTags(session.user.id);
         fetchUserDocuments(session.user.id);
       }
     } catch (error) {
       console.error('Error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserTags = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_tags')
+        .select('id, name')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setTags(data || []);
+    } catch (error) {
+      console.error('Error fetching tags:', error);
+    }
+  };
+
+  const fetchUserDocuments = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_documents')
+        .select('id, document_id, tag_id')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setUserDocuments(data || []);
+    } catch (error) {
+      console.error('Error fetching user documents:', error);
+    }
+  };
+
+  const handleCreateTag = async () => {
+    if (!newTag.trim() || !userProfile) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('user_tags')
+        .insert([{
+          name: newTag,
+          user_id: session.user.id
+        }])
+        .select();
+
+      if (error) throw error;
+
+      if (data) {
+        setTags([...tags, ...data]);
+      }
+
+      setNewTag('');
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      alert('タグの作成に失敗しました');
+    }
+  };
+
+  const handleAddDocuments = async () => {
+    if (!selectedTag || selectedDocuments.length === 0) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const newUserDocuments = selectedDocuments.map(document_id => ({
+        user_id: session.user.id,
+        document_id,
+        tag_id: selectedTag
+      }));
+
+      const { error } = await supabase
+        .from('user_documents')
+        .insert(newUserDocuments);
+
+      if (error) throw error;
+
+      // 再取得
+      fetchUserDocuments(session.user.id);
+      setSelectedDocuments([]);
+    } catch (error) {
+      console.error('Error adding documents:', error);
+      alert('ドキュメントの追加に失敗しました');
+    }
+  };
+
+  const handleRemoveDocument = async (documentId: string, tagId: string) => {
+    try {
+      const { error } = await supabase
+        .from('user_documents')
+        .delete()
+        .eq('document_id', documentId)
+        .eq('tag_id', tagId);
+
+      if (error) throw error;
+
+      // 再取得
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        fetchUserDocuments(session.user.id);
+      }
+    } catch (error) {
+      console.error('Error removing document:', error);
+      alert('ドキュメントの削除に失敗しました');
     }
   };
 
@@ -68,125 +179,6 @@ export default function Library() {
       setDocuments(data || []);
     } catch (error) {
       console.error('Error fetching documents:', error);
-    }
-  };
-
-  const fetchUserDocuments = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_documents')
-        .select('id, documents')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
-      setUserDocuments(data || null);
-    } catch (error) {
-      console.error('Error fetching user documents:', error);
-    }
-  };
-
-  const handleCreateTag = async () => {
-    if (!newTag.trim() || !userProfile) return;
-
-    try {
-      const newDocuments = {
-        ...(userDocuments?.documents || {}),
-        [newTag]: []
-      };
-
-      if (userDocuments) {
-        // 既存のレコードを更新
-        const { error } = await supabase
-          .from('user_documents')
-          .update({ documents: newDocuments })
-          .eq('id', userDocuments.id);
-
-        if (error) throw error;
-      } else {
-        // 新しいレコードを作成
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
-
-        const { error } = await supabase
-          .from('user_documents')
-          .insert([{
-            user_id: session.user.id,
-            documents: newDocuments
-          }]);
-
-        if (error) throw error;
-      }
-
-      // 再取得
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        fetchUserDocuments(session.user.id);
-      }
-
-      setNewTag('');
-    } catch (error) {
-      console.error('Error creating tag:', error);
-      alert('タグの作成に失敗しました');
-    }
-  };
-
-  const handleAddDocuments = async () => {
-    if (!selectedTag || !userDocuments || selectedDocuments.length === 0) return;
-
-    try {
-      const currentDocs = userDocuments.documents[selectedTag] || [];
-      const newDocs = Array.from(new Set([...currentDocs, ...selectedDocuments]));
-      const newDocuments = {
-        ...userDocuments.documents,
-        [selectedTag]: newDocs
-      };
-
-      const { error } = await supabase
-        .from('user_documents')
-        .update({ documents: newDocuments })
-        .eq('id', userDocuments.id);
-
-      if (error) throw error;
-
-      // 再取得
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        fetchUserDocuments(session.user.id);
-      }
-
-      setSelectedDocuments([]);
-    } catch (error) {
-      console.error('Error adding documents:', error);
-      alert('ドキュメントの追加に失敗しました');
-    }
-  };
-
-  const handleRemoveDocument = async (tag: string, documentId: string) => {
-    if (!userDocuments) return;
-
-    try {
-      const newDocs = userDocuments.documents[tag].filter(id => id !== documentId);
-      const newDocuments = {
-        ...userDocuments.documents,
-        [tag]: newDocs
-      };
-
-      const { error } = await supabase
-        .from('user_documents')
-        .update({ documents: newDocuments })
-        .eq('id', userDocuments.id);
-
-      if (error) throw error;
-
-      // 再取得
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        fetchUserDocuments(session.user.id);
-      }
-    } catch (error) {
-      console.error('Error removing document:', error);
-      alert('ドキュメントの削除に失敗しました');
     }
   };
 
@@ -261,7 +253,7 @@ export default function Library() {
               </div>
             </div>
 
-            {userDocuments && Object.keys(userDocuments.documents).length > 0 && (
+            {tags.length > 0 && (
               <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
                 <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">ドキュメントを追加</h2>
                 <div className="space-y-4">
@@ -271,8 +263,8 @@ export default function Library() {
                     className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700"
                   >
                     <option value="">タグを選択...</option>
-                    {Object.keys(userDocuments.documents).map((tag) => (
-                      <option key={tag} value={tag}>{tag}</option>
+                    {tags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>{tag.name}</option>
                     ))}
                   </select>
 
@@ -314,26 +306,29 @@ export default function Library() {
 
           {/* 右側: タグとドキュメントの一覧 */}
           <div className="space-y-6">
-            {userDocuments && Object.entries(userDocuments.documents).map(([tag, docIds]) => (
-              <div key={tag} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-                <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">{tag}</h2>
-                <div className="space-y-2">
-                  {docIds.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      ドキュメントがありません
-                    </p>
-                  ) : (
-                    docIds.map((docId) => {
-                      const doc = documents.find(d => d.id === docId);
-                      if (!doc) return null;
-                      return (
+            {tags.map((tag) => {
+              const tagDocuments = userDocuments
+                .filter(ud => ud.tag_id === tag.id)
+                .map(ud => documents.find(d => d.id === ud.document_id))
+                .filter((doc): doc is Document => doc !== undefined);
+
+              return (
+                <div key={tag.id} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+                  <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">{tag.name}</h2>
+                  <div className="space-y-2">
+                    {tagDocuments.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        ドキュメントがありません
+                      </p>
+                    ) : (
+                      tagDocuments.map((doc) => (
                         <div
-                          key={docId}
+                          key={doc.id}
                           className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-700 rounded"
                         >
                           <span className="text-sm text-gray-700 dark:text-gray-300">{doc.file_name}</span>
                           <button
-                            onClick={() => handleRemoveDocument(tag, docId)}
+                            onClick={() => handleRemoveDocument(doc.id, tag.id)}
                             className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,14 +336,14 @@ export default function Library() {
                             </svg>
                           </button>
                         </div>
-                      );
-                    })
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
-            {(!userDocuments || Object.keys(userDocuments.documents).length === 0) && (
+            {tags.length === 0 && (
               <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
                 <p className="text-center text-gray-500 dark:text-gray-400">
                   タグを作成して、ドキュメントを整理しましょう

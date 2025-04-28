@@ -27,6 +27,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <nav className="bg-white dark:bg-gray-800 shadow-sm mb-4">
+          <div className="container mx-auto px-6 py-3 flex gap-6">
+            <a href="/" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ホーム</a>
+            <a href="/library" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ライブラリ</a>
+            <a href="/post" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">投稿</a>
+            <a href="/report" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">レポート</a>
+          </div>
+        </nav>
         {children}
       </body>
     </html>
