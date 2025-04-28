@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabase";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid } from "recharts";
 
 // 日付ごとの勉強記録型
 type StudyRecord = {
@@ -48,7 +48,7 @@ export default function Report() {
         }
       });
       setData(days.map((d) => ({ date: d, totalMinutes: daily[d] })));
-    } catch (e) {
+    } catch {
       alert("データ取得に失敗しました");
     } finally {
       setLoading(false);

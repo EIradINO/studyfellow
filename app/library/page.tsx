@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
 
 type UserProfile = {
@@ -34,12 +34,7 @@ export default function Library() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchUserProfile();
-    fetchDocuments();
-  }, []);
-
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -61,7 +56,12 @@ export default function Library() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchUserProfile();
+    fetchDocuments();
+  }, [fetchUserProfile]);
 
   const fetchUserTags = async (userId: string) => {
     try {
