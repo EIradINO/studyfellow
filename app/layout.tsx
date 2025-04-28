@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,10 +30,10 @@ export default function RootLayout({
       >
         <nav className="bg-white dark:bg-gray-800 shadow-sm mb-4">
           <div className="container mx-auto px-6 py-3 flex gap-6">
-            <a href="/" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ホーム</a>
-            <a href="/library" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ライブラリ</a>
-            <a href="/post" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">投稿</a>
-            <a href="/report" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">レポート</a>
+            <Link href="/" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ホーム</Link>
+            <Link href="/library" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ライブラリ</Link>
+            <Link href="/post" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">投稿</Link>
+            <Link href="/report" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">レポート</Link>
           </div>
         </nav>
         {children}
