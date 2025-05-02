@@ -170,6 +170,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           message: newMessage,
+          room_id: currentRoom.id,
           history: messages.map(msg => ({
             role: msg.role,
             content: msg.content
@@ -187,23 +188,8 @@ export default function Home() {
         throw new Error(errorData.error || 'Failed to generate response');
       }
 
-      const data = await response.json() as { content: string };
-      const { content } = data;
-
-      // アシスタントのメッセージを保存
-      const { data: assistantMessage, error: assistantError } = await supabase
-        .from('messages')
-        .insert([{
-          room_id: currentRoom.id,
-          role: 'model',
-          content: content
-        }])
-        .select()
-        .single();
-
-      if (assistantError) throw assistantError;
-
-      setMessages(prev => [...prev, assistantMessage]);
+      // メッセージを再取得
+      await fetchMessages(currentRoom.id);
 
       // 送信後にドキュメント選択と範囲をリセット
       setSelectedDocument(null);

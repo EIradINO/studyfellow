@@ -18,6 +18,7 @@ interface RequestBody {
   message: string;
   document?: DocumentInfo;
   history?: ChatMessage[];
+  room_id: string;
 }
 
 // --- バリデーション関数 ---
@@ -93,26 +94,69 @@ async function fetchDocumentContext(supabase: SupabaseClient, document: Document
 }
 
 // --- ツール定義 ---
-const weatherFunctionDeclaration = {
-  name: 'get_current_temperature',
-  description: '指定された場所の現在の気温を取得します。',
+const similarQuestionFunctionDeclaration = {
+  name: 'generate_similar_question',
+  description: 'ユーザーの質問に基づいて類題を生成します。',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      location: {
+      question: {
         type: Type.STRING,
-        description: '都市名（例：東京、大阪）',
+        description: 'ユーザーの質問内容',
+      },
+      answer: {
+        type: Type.STRING,
+        description: 'ユーザーの質問に対する解答・解説',
       },
     },
-    required: ['location'],
+    required: ['question', 'answer'],
   },
 };
 
 // --- ツール実行関数 ---
-async function getCurrentTemperature(location: string): Promise<number> {
-  // 実際のアプリケーションでは、ここで天気APIを呼び出す
-  // 今回はランダムな気温を返す
-  return Math.floor(Math.random() * 30) + 10; // 10-40度の範囲でランダムな気温
+async function generateSimilarQuestion(question: string, answer: string): Promise<{ question: string; answer: string }> {
+  const genAI = getGeminiClient();
+  const chat = genAI.chats.create({
+    model: "gemini-2.0-flash",
+    config: {
+      temperature: 0.7,
+    },
+  });
+
+  const prompt = `以下の問題と解答を参考に、同じ分野・難易度の類題を1つ作成してください。
+問題は、元の問題と似た構造や考え方を使うものにしてください。
+解答には、考え方や解法のポイントも含めてください。
+
+【元の問題】
+${question}
+
+【解答】
+${answer}
+
+以下の形式で出力してください：
+問題：
+[類題の内容]
+
+解答：
+[解答と解説]`;
+
+  const response = await chat.sendMessage({ message: prompt });
+  if (!response.text) {
+    throw new Error('類題の生成に失敗しました');
+  }
+
+  // 問題と解答を分離
+  const questionMatch = response.text.match(/問題：\n([\s\S]*?)\n\n解答：/);
+  const answerMatch = response.text.match(/解答：\n([\s\S]*?)$/);
+
+  if (!questionMatch || !answerMatch) {
+    throw new Error('類題の生成に失敗しました');
+  }
+
+  return {
+    question: questionMatch[1].trim(),
+    answer: answerMatch[1].trim()
+  };
 }
 
 // --- メインAPIエンドポイント ---
@@ -137,7 +181,7 @@ export async function POST(req: Request) {
       config: {
         systemInstruction: systemInstruction,
         tools: [{
-          functionDeclarations: [weatherFunctionDeclaration]
+          functionDeclarations: [similarQuestionFunctionDeclaration]
         }],
       },
       history: body.history?.map((msg: ChatMessage) => ({
@@ -148,27 +192,49 @@ export async function POST(req: Request) {
 
     const response = await chat.sendMessage({ message: context + body.message });
     
-    // ツール呼び出しの処理
+    // アシスタントのメッセージを保存
+    const { data: assistantMessage, error: assistantMessageError } = await supabase
+      .from('messages')
+      .insert([{
+        room_id: body.room_id,
+        role: 'model',
+        content: response.text
+      }])
+      .select()
+      .single();
+
+    if (assistantMessageError) throw assistantMessageError;
+
+    let similarQuestion = null;
+    // ツール呼び出しの処理（類題生成）
     if (response.functionCalls && response.functionCalls.length > 0) {
       const functionCall = response.functionCalls[0];
-      if (functionCall.name === 'get_current_temperature' && 
+      if (functionCall.name === 'generate_similar_question' && 
           functionCall.args && 
           typeof functionCall.args === 'object' && 
-          'location' in functionCall.args && 
-          typeof functionCall.args.location === 'string') {
-        const temperature = await getCurrentTemperature(functionCall.args.location);
-        return NextResponse.json({ 
-          content: `${functionCall.args.location}の現在の気温は${temperature}度です。`,
-          function_call: {
-            name: functionCall.name,
-            args: functionCall.args,
-            result: temperature
-          }
-        });
+          'question' in functionCall.args && 
+          'answer' in functionCall.args) {
+        similarQuestion = await generateSimilarQuestion(
+          functionCall.args.question as string,
+          functionCall.args.answer as string
+        );
+
+        // 類題のメッセージを保存
+        const { data: similarQuestionMessage, error: similarQuestionError } = await supabase
+          .from('messages')
+          .insert([{
+            room_id: body.room_id,
+            role: 'model',
+            content: `類題：\n${similarQuestion.question}\n\n解答：\n${similarQuestion.answer}`
+          }])
+          .select()
+          .single();
+
+        if (similarQuestionError) throw similarQuestionError;
       }
     }
 
-    return NextResponse.json({ content: response.text });
+    return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '不明なエラーが発生しました';
     return NextResponse.json({ error: errorMessage }, { status: 500 });

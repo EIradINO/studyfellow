@@ -1,27 +1,14 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
+import { createClient } from '@supabase/supabase-js'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { NextResponse } from 'next/server'
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.1.3'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const googleApiKey = Deno.env.get('GOOGLE_API_KEY')!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const googleApiKey = process.env.GOOGLE_API_KEY!
 
 const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+export async function POST(req: Request) {
   try {
     const { post } = await req.json()
     
@@ -60,7 +47,6 @@ Deno.serve(async (req) => {
     5. 返信は300-500文字程度に収める`
 
     const result = await model.generateContent(postPrompt)
-
     const response = await result.response.text()
 
     const { error: insertError } = await supabase
@@ -74,6 +60,7 @@ Deno.serve(async (req) => {
     if (insertError) {
       throw insertError
     }
+
     const analysisPrompt = `
     ユーザーの学習記録やコメントをもとに、以下の観点から学力を多角的に分析してください：
     - 知識の定着度
@@ -89,15 +76,15 @@ Deno.serve(async (req) => {
 
     【教科書の内容】
     ${context}
-    `;
+    `
 
-    const analysisResult = await model.generateContent(analysisPrompt);
-    const analysisResponse = await analysisResult.response.text();
+    const analysisResult = await model.generateContent(analysisPrompt)
+    const analysisResponse = await analysisResult.response.text()
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
 
     const { data: dailyReportData } = await supabase
       .from('user_daily_reports')
@@ -105,7 +92,7 @@ Deno.serve(async (req) => {
       .eq('user_id', post.user_id)
       .gte('created_at', today.toISOString())
       .lt('created_at', tomorrow.toISOString())
-      .maybeSingle();
+      .maybeSingle()
 
     if (!dailyReportData) {
       const { error: insertDailyError } = await supabase
@@ -113,44 +100,26 @@ Deno.serve(async (req) => {
         .insert({
           user_id: post.user_id,
           daily_report: [analysisResponse]
-        });
+        })
   
       if (insertDailyError) {
-        throw insertDailyError;
+        throw insertDailyError
       }
     } else {
       const { error: updateError } = await supabase
         .from('user_daily_reports')
         .update({ daily_report: [...dailyReportData.daily_report, analysisResponse] })
-        .eq('id', dailyReportData.id);
+        .eq('id', dailyReportData.id)
 
       if (updateError) {
-        throw updateError;
+        throw updateError
       }
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    return NextResponse.json({ success: true })
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    })
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
-})
-
-/* To invoke locally:
-
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
-
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/generate-post-response' \
-    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
-
-*/
+} 
