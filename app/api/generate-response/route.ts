@@ -21,6 +21,20 @@ interface RequestBody {
   room_id: string;
 }
 
+// チャット設定の型定義
+interface ChatSettingSub {
+  field: string;
+  level: number;
+  explanation: string;
+}
+
+interface ChatSetting {
+  subject: string;
+  level: number;
+  explanation: string;
+  user_chat_settings_sub: ChatSettingSub[];
+}
+
 // --- バリデーション関数 ---
 function validateRequestBody(body: RequestBody) {
   if (!body.message) {
@@ -60,17 +74,64 @@ function getGeminiClient() {
 }
 
 // --- ユーザーの学習状況取得 ---
-async function fetchUserDailyReport(supabase: SupabaseClient): Promise<string> {
-  const { data: dailyReports, error } = await supabase
-    .from('user_daily_reports')
-    .select('daily_report')
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (error) throw new Error('学習状況の取得に失敗しました');
-  if (dailyReports && dailyReports.length > 0) {
-    return `以下のユーザーの学習状況を考慮して、適切なレベルの回答を提供してください：\n${dailyReports[0].daily_report}\n\n回答の際は以下の点に注意してください：\n1. ユーザーの現在の理解度に合わせた説明を心がける\n2. 必要に応じて基礎的な概念から説明する\n3. 専門用語は適切に説明を加える\n4. ユーザーの学習進捗に合わせた難易度で回答する\n`;
+async function fetchUserInstantReport(supabase: SupabaseClient, user_id: string): Promise<string> {
+  const { data: report, error } = await supabase
+    .from('user_instant_reports')
+    .select('content')
+    .eq('user_id', user_id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new Error('学習状況の取得に失敗しました');
+  }
+
+  if (report?.content) {
+    return `以下のユーザーの学習状況を考慮して、適切なレベルの回答を提供してください：\n${report.content}\n\n回答の際は以下の点に注意してください：\n1. ユーザーの現在の理解度に合わせた説明を心がける\n2. 必要に応じて基礎的な概念から説明する\n3. 専門用語は適切に説明を加える\n4. ユーザーの学習進捗に合わせた難易度で回答する\n`;
   }
   return '';
+}
+
+// --- ユーザーのチャット設定取得 ---
+async function fetchUserChatSettings(supabase: SupabaseClient, user_id: string): Promise<string> {
+  const { data: settings, error: settingsError } = await supabase
+    .from('user_chat_settings')
+    .select(`
+      subject,
+      level,
+      explanation,
+      user_chat_settings_sub (
+        field,
+        level,
+        explanation
+      )
+    `)
+    .eq('user_id', user_id);
+
+  if (settingsError) {
+    throw new Error('チャット設定の取得に失敗しました');
+  }
+
+  if (!settings || settings.length === 0) {
+    return '';
+  }
+
+  // 型アサーションを使用して型を保証
+  const typedSettings = settings as ChatSetting[];
+  
+  // 設定を整形してJSONに変換
+  const formattedSettings = typedSettings.map(setting => ({
+    subject: setting.subject,
+    level: setting.level,
+    explanation: setting.explanation,
+    fields: setting.user_chat_settings_sub.map(sub => ({
+      field: sub.field,
+      level: sub.level,
+      explanation: sub.explanation
+    }))
+  }));
+
+  const settingsJson = JSON.stringify(formattedSettings, null, 2);
+  return `以下のユーザーの学習設定を考慮して回答してください：\n${settingsJson}`;
 }
 
 // --- ドキュメントの文脈取得 ---
@@ -168,8 +229,24 @@ export async function POST(req: Request) {
     const supabase = getSupabaseClient();
     const genAI = getGeminiClient();
 
-    // システムプロンプト
-    const systemInstruction = await fetchUserDailyReport(supabase);
+    // room_idからuser_idを取得
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select('user_id')
+      .eq('id', body.room_id)
+      .single();
+
+    if (roomError || !room?.user_id) {
+      throw new Error('roomのuser_idが特定できませんでした');
+    }
+
+    const user_id = room.user_id;
+
+    // システムプロンプトの生成
+    const instantReport = await fetchUserInstantReport(supabase, user_id);
+    const chatSettings = await fetchUserChatSettings(supabase, user_id);
+    const systemInstruction = `${instantReport}\n${chatSettings}`;
+
     // ドキュメント文脈
     let context = '';
     if (body.document) {
@@ -233,6 +310,21 @@ export async function POST(req: Request) {
         if (similarQuestionError) throw similarQuestionError;
       }
     }
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
+      'http://localhost:3000';
+
+    await fetch(`${baseUrl}/api/analyze-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'messages',
+        id: body.room_id,
+        user_id
+      })
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

@@ -220,11 +220,17 @@ export default function Post() {
       setDurationMinute('');
 
       // AIの返信を生成
-      const { error: responseError } = await supabase.functions.invoke('generate-post-response', {
-        body: { post }
+      const response = await fetch('/api/generate-post-response', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ post })
       });
 
-      if (responseError) throw responseError;
+      if (!response.ok) {
+        throw new Error('AIの返信生成に失敗しました');
+      }
 
       fetchPosts();
     } catch (error) {

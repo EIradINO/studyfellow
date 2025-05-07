@@ -54,72 +54,42 @@ export async function POST(req: Request) {
       .insert({
         post_id: post.id,
         content: response,
-        role: 'assistant'
+        role: 'model'
       })
 
     if (insertError) {
       throw insertError
     }
 
-    const analysisPrompt = `
-    ユーザーの学習記録やコメントをもとに、以下の観点から学力を多角的に分析してください：
-    - 知識の定着度
-    - 応用力
-    - 課題点や今後の伸びしろ
-    - 学習姿勢やモチベーション
-    - その他気づいた点
+    // サーバーサイドでfetchする場合は絶対URLが必要
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
+      'http://localhost:3000';
+    console.log('[generate-post-response] baseUrl', { baseUrl });
 
-    300〜500文字程度で、具体的かつ前向きなフィードバックをお願いします。
+    const analyzeResponse = await fetch(`${baseUrl}/api/analyze-user`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'post_messages',
+        id: post.id,
+        user_id: post.user_id,
+      }),
+    });
 
-    【ユーザーのコメント】
-    ${userComment}
-
-    【教科書の内容】
-    ${context}
-    `
-
-    const analysisResult = await model.generateContent(analysisPrompt)
-    const analysisResponse = await analysisResult.response.text()
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
-    const { data: dailyReportData } = await supabase
-      .from('user_daily_reports')
-      .select('id, daily_report')
-      .eq('user_id', post.user_id)
-      .gte('created_at', today.toISOString())
-      .lt('created_at', tomorrow.toISOString())
-      .maybeSingle()
-
-    if (!dailyReportData) {
-      const { error: insertDailyError } = await supabase
-        .from('user_daily_reports')
-        .insert({
-          user_id: post.user_id,
-          daily_report: [analysisResponse]
-        })
-  
-      if (insertDailyError) {
-        throw insertDailyError
-      }
-    } else {
-      const { error: updateError } = await supabase
-        .from('user_daily_reports')
-        .update({ daily_report: [...dailyReportData.daily_report, analysisResponse] })
-        .eq('id', dailyReportData.id)
-
-      if (updateError) {
-        throw updateError
-      }
+    if (!analyzeResponse.ok) {
+      console.error('ユーザー分析の処理に失敗しました');
     }
 
-    return NextResponse.json({ success: true })
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error:', error);
+    return NextResponse.json(
+      { error: '投稿の生成中にエラーが発生しました' },
+      { status: 500 }
+    );
   }
 } 
