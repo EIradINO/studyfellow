@@ -206,4 +206,4 @@ ${currentReport}
     const errorMessage = error instanceof Error ? error.message : '不明なエラーが発生しました';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-} 
+}

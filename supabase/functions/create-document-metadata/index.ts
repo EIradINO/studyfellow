@@ -23,6 +23,14 @@ Deno.serve(async (req) => {
     });
     
     if (table === 'objects') {
+      if (record.bucket_id !== 'documents' && record.bucket_id !== 'workbooks') {
+        console.log('Skipping non-target bucket:', record.bucket_id);
+        return new Response(
+          JSON.stringify({ message: '対象外のバケットです' }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       if (type === 'INSERT') {
         const fileName = record.name;
         const fileExtension = fileName.split('.').pop()?.toLowerCase();
@@ -66,6 +74,14 @@ Deno.serve(async (req) => {
         
         console.log('Created metadata for:', fileName);
       } else if (type === 'DELETE') {
+        if (old_record.bucket_id !== 'documents' && old_record.bucket_id !== 'workbooks') {
+          console.log('Skipping non-target bucket:', old_record.bucket_id);
+          return new Response(
+            JSON.stringify({ message: '対象外のバケットです' }),
+            { headers: { "Content-Type": "application/json" } },
+          );
+        }
+
         const fileName = old_record.name;
         
         const { data: existingData, error: checkError } = await supabase

@@ -2,6 +2,9 @@
 
 import { supabase } from '@/utils/supabase';
 import { useState, useEffect } from 'react';
+import Header from '@/app/components/Header'
+import RoomList from '@/app/components/RoomList';
+import ChatWindow from '@/app/components/ChatWindow';
 
 type UserProfile = {
   display_name: string;
@@ -13,6 +16,8 @@ type Room = {
   title: string;
   created_at: string;
   updated_at: string;
+  interactive: boolean;
+  internet_search: boolean;
 };
 
 type Message = {
@@ -21,12 +26,22 @@ type Message = {
   role: 'user' | 'model';
   content: string;
   created_at?: string;
+  type?: 'text' | 'image' | 'pdf' | 'file';
+  file_url?: string | null;
 };
 
 type DocumentMetadata = {
   id: string;
   file_name: string;
 };
+
+const SUPPORTED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/heic",
+  "image/heif"
+];
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
@@ -40,6 +55,19 @@ export default function Home() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentMetadata | null>(null);
   const [startPage, setStartPage] = useState<string>('');
   const [endPage, setEndPage] = useState<string>('');
+  const [file, setFile] = useState<File | null>(null);
+  const [interactive, setInteractive] = useState(false);
+  const [internet_search, setInternetSearch] = useState(false);
+
+  useEffect(() => {
+    if (currentRoom) {
+      setInteractive(currentRoom.interactive);
+      setInternetSearch(currentRoom.internet_search);
+    } else {
+      setInteractive(false);
+      setInternetSearch(false);
+    }
+  }, [currentRoom]);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -78,6 +106,13 @@ export default function Home() {
 
       if (error) throw error;
       setRooms(data || []);
+      if (currentRoom) {
+        const currentRoomData = data?.find(room => room.id === currentRoom.id);
+        if (currentRoomData) {
+          setInteractive(currentRoomData.interactive);
+          setInternetSearch(currentRoomData.internet_search);
+        }
+      }
     } catch (error) {
       console.error('Error fetching rooms:', error);
     }
@@ -122,7 +157,9 @@ export default function Home() {
         .from('rooms')
         .insert([{ 
           title: '新しいチャット',
-          user_id: session.user.id
+          user_id: session.user.id,
+          interactive: false,
+          internet_search: false
         }])
         .select()
         .single();
@@ -131,13 +168,29 @@ export default function Home() {
       setRooms([data, ...rooms]);
       setCurrentRoom(data);
       setMessages([]);
+      setInteractive(false);
+      setInternetSearch(false);
     } catch (error) {
       console.error('Error creating room:', error);
     }
   };
 
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type.startsWith("image/") && !SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+        alert("この画像形式はサポートされていません。PNG, JPEG, WEBP, HEIC, HEIFのみアップロード可能です。");
+        e.target.value = ""; // ファイル選択をリセット
+        return;
+      }
+      setFile(file);
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !currentRoom || isGenerating) return;
+    if (!currentRoom || isGenerating || (!newMessage.trim() && !file && !selectedDocument)) {
+      return;
+    }
     if (selectedDocument && (!startPage || !endPage)) {
       alert('ファイルを選択した場合は、ページ範囲を指定してください。');
       return;
@@ -146,57 +199,147 @@ export default function Home() {
     try {
       setIsGenerating(true);
 
-      // ユーザーメッセージを保存
-      const { data: userMessage, error: messageError } = await supabase
-        .from('messages')
-        .insert([{
-          room_id: currentRoom.id,
-          role: 'user',
-          content: newMessage
-        }])
-        .select()
-        .single();
-
-      if (messageError) throw messageError;
-
-      setMessages(prev => [...prev, userMessage]);
-      setNewMessage('');
-
-      // チャット履歴を含めてGeminiの応答を生成
-      const response = await fetch('/api/generate-response', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: newMessage,
-          room_id: currentRoom.id,
-          history: messages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })),
-          document: selectedDocument ? {
+      // 1. コンテキストメッセージの処理
+      let contextProcessed = false;
+      if (selectedDocument && startPage && endPage && currentRoom) {
+        const contextContent = newMessage; // テキストフィールドの内容をそのまま保存
+        const { data: contextMsg, error: contextMsgError } = await supabase
+          .from('messages')
+          .insert([{
+            room_id: currentRoom.id,
+            role: 'user',
+            content: contextContent, // newMessage を含める
+            type: 'context',
             file_name: selectedDocument.file_name,
             start_page: parseInt(startPage),
-            end_page: parseInt(endPage)
-          } : null
-        })
-      });
+            end_page: parseInt(endPage),
+          }])
+          .select()
+          .single();
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate response');
+        if (contextMsgError) {
+          console.error('Error saving context message:', contextMsgError);
+          alert('コンテキストメッセージの保存に失敗しました。');
+          setIsGenerating(false);
+          return;
+        }
+        if (contextMsg) {
+          setMessages(prev => [...prev, contextMsg]);
+        }
+        setNewMessage(''); // newMessage もクリア
+        setSelectedDocument(null);
+        setStartPage('');
+        setEndPage('');
+        contextProcessed = true;
       }
 
-      // メッセージを再取得
+      // 2. ファイルメッセージの処理
+      let fileProcessed = false;
+      if (file) {
+        let messageTypeForFile = 'file';
+        if (file.type.startsWith('image/')) {
+          messageTypeForFile = 'image';
+        } else if (file.type === 'application/pdf') {
+          messageTypeForFile = 'pdf';
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId) {
+          alert('ユーザー情報が取得できません');
+          setIsGenerating(false);
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('user_id', userId);
+
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const result = await res.json();
+
+        if (res.status !== 200 || !result.filePath) {
+          alert('アップロード失敗、またはファイルパスが取得できません: ' + (result.error || 'Unknown error'));
+          setIsGenerating(false);
+          return;
+        }
+        
+        const { data: fileMsg, error: fileMsgError } = await supabase
+          .from('messages')
+          .insert([{
+            room_id: currentRoom.id,
+            role: 'user',
+            content: result.fileName, // ファイル名
+            type: messageTypeForFile,
+            file_url: result.filePath,
+          }])
+          .select()
+          .single();
+
+        if (fileMsgError) {
+          console.error('Error saving file message:', fileMsgError);
+          alert('ファイルメッセージの保存に失敗しました。');
+          setIsGenerating(false);
+          return;
+        }
+        if (fileMsg) {
+          setMessages(prev => [...prev, fileMsg]);
+        }
+        setFile(null);
+        const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+        fileProcessed = true;
+      }
+
+      // 3. 通常のテキストメッセージの処理 (ファイルが処理されなかった場合、かつcontextでない場合のみ)
+      if (!fileProcessed && !contextProcessed && newMessage.trim()) {
+        const { data: textMsg, error: textMsgError } = await supabase
+          .from('messages')
+          .insert([{
+            room_id: currentRoom.id,
+            role: 'user',
+            content: newMessage, // newMessage の内容
+            type: 'text',
+          }])
+          .select()
+          .single();
+
+        if (textMsgError) {
+          console.error('Error saving text message:', textMsgError);
+          alert('テキストメッセージの保存に失敗しました。');
+          setIsGenerating(false);
+          return;
+        }
+        if (textMsg) {
+          setMessages(prev => [...prev, textMsg]);
+        }
+      }
+
+      // generate-response API を発火
+      if (contextProcessed || (!fileProcessed && newMessage.trim())) {
+        try {
+          await fetch('/api/generate-response', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              room_id: currentRoom.id,
+              interactive: interactive,
+              internet_search: internet_search,
+            }),
+          });
+        } catch (err) {
+          console.error('generate-response API error:', err);
+        }
+      }
+
+      // 4. 最終的なクリア処理
+      setNewMessage(''); // 全ての処理が終わったのでクリア
+
       await fetchMessages(currentRoom.id);
 
-      // 送信後にドキュメント選択と範囲をリセット
-      setSelectedDocument(null);
-      setStartPage('');
-      setEndPage('');
     } catch (error) {
       console.error('Error sending message:', error);
+      alert('メッセージの送信中にエラーが発生しました。');
     } finally {
       setIsGenerating(false);
     }
@@ -212,6 +355,52 @@ export default function Home() {
       setMessages([]);
     } catch (error) {
       console.error('Error:', error);
+    }
+  };
+
+  const handleInteractiveToggle = async (newValue: boolean) => {
+    if (!currentRoom) return;
+    
+    // 先にUIを更新
+    setInteractive(newValue);
+    
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ interactive: newValue })
+        .eq('id', currentRoom.id);
+
+      if (error) {
+        // エラーが発生した場合は元の状態に戻す
+        setInteractive(!newValue);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error updating interactive mode:', error);
+      alert('対話モードの更新に失敗しました。');
+    }
+  };
+
+  const handleInternetSearchToggle = async (newValue: boolean) => {
+    if (!currentRoom) return;
+    
+    // 先にUIを更新
+    setInternetSearch(newValue);
+    
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ internet_search: newValue })
+        .eq('id', currentRoom.id);
+
+      if (error) {
+        // エラーが発生した場合は元の状態に戻す
+        setInternetSearch(!newValue);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error updating internet search mode:', error);
+      alert('検索モードの更新に失敗しました。');
     }
   };
 
@@ -243,168 +432,38 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <header className="bg-white dark:bg-gray-800 shadow-sm">
-        <div className="container mx-auto px-6 py-4">
-          <nav className="flex justify-between items-center">
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">StudyFellow</div>
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <p className="font-medium text-gray-900 dark:text-white">{userProfile.display_name}</p>
-                <p className="text-gray-500 dark:text-gray-400">@{userProfile.user_name}</p>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-full hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-              >
-                ログアウト
-              </button>
-            </div>
-          </nav>
-        </div>
-      </header>
-
+      <Header userProfile={userProfile} handleLogout={handleLogout} />
       <main className="container mx-auto px-6 py-8">
         <div className="flex gap-8">
-          <div className="w-64 flex-shrink-0">
-            <button
-              onClick={createNewRoom}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mb-4"
-            >
-              新しいチャット
-            </button>
-            <div className="space-y-2">
-              {rooms.map((room) => (
-                <button
-                  key={room.id}
-                  onClick={() => {
-                    setCurrentRoom(room);
-                    fetchMessages(room.id);
-                  }}
-                  className={`w-full text-left px-4 py-2 rounded-lg ${
-                    currentRoom?.id === room.id
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  {room.title}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex-1 flex flex-col">
-            {currentRoom ? (
-              <>
-                <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${
-                        message.role === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                          message.role === 'user'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                        }`}
-                      >
-                        {message.content}
-                      </div>
-                    </div>
-                  ))}
-                  {isGenerating && (
-                    <div className="flex justify-start">
-                      <div className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                    {documents.map((doc) => (
-                      <button
-                        key={doc.id}
-                        onClick={() => setSelectedDocument(selectedDocument?.id === doc.id ? null : doc)}
-                        className={`text-xs px-2 py-1 rounded transition-colors ${
-                          selectedDocument?.id === doc.id
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800'
-                        }`}
-                      >
-                        {doc.file_name}
-                      </button>
-                    ))}
-                  </div>
-                  {selectedDocument && (
-                    <div className="flex gap-2 items-center bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">ページ範囲（必須）:</span>
-                      <input
-                        type="number"
-                        min="1"
-                        required
-                        value={startPage}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStartPage(value);
-                          if (endPage && parseInt(value) > parseInt(endPage)) {
-                            setEndPage(value);
-                          }
-                        }}
-                        placeholder="開始"
-                        className="w-20 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800"
-                      />
-                      <span>-</span>
-                      <input
-                        type="number"
-                        min="1"
-                        required
-                        value={endPage}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setEndPage(value);
-                          if (startPage && parseInt(value) < parseInt(startPage)) {
-                            setStartPage(value);
-                          }
-                        }}
-                        placeholder="終了"
-                        className="w-20 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800"
-                      />
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                      placeholder={selectedDocument 
-                        ? `${selectedDocument.file_name}について質問...`
-                        : "メッセージを入力..."}
-                      className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800"
-                    />
-                    <button
-                      onClick={handleSendMessage}
-                      disabled={!newMessage.trim() || isGenerating}
-                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      送信
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-                チャットを選択するか、新しいチャットを開始してください
-              </div>
-            )}
-          </div>
+          <RoomList
+            rooms={rooms}
+            currentRoom={currentRoom}
+            setCurrentRoom={setCurrentRoom}
+            fetchMessages={fetchMessages}
+            createNewRoom={createNewRoom}
+          />
+          <ChatWindow
+            currentRoom={currentRoom}
+            messages={messages}
+            isGenerating={isGenerating}
+            documents={documents}
+            selectedDocument={selectedDocument}
+            setSelectedDocument={setSelectedDocument}
+            startPage={startPage}
+            setStartPage={setStartPage}
+            endPage={endPage}
+            setEndPage={setEndPage}
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            handleSendMessage={handleSendMessage}
+            file={file}
+            setFile={setFile}
+            onFileChange={onFileChange}
+            interactive={interactive}
+            setInteractive={handleInteractiveToggle}
+            internet_search={internet_search}
+            setInternetSearch={handleInternetSearchToggle}
+          />
         </div>
       </main>
     </div>
