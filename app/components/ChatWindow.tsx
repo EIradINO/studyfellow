@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { Components } from 'react-markdown';
 import 'katex/dist/katex.min.css';
+import Image from 'next/image';
 
 type Room = {
   id: string;
@@ -98,9 +99,9 @@ const ImageMessageDisplay: React.FC<ImageMessageProps> = ({ filePath, altText, c
         updateCache(filePath, newEntry);
         setImageUrl(newEntry.url);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`[ImageMessageDisplay] Exception creating signed URL for ${filePath}:`, err);
-      setError(err.message || 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Unknown error');
       setImageUrl(null);
     }
   }, [filePath, cache, updateCache]);
@@ -116,7 +117,7 @@ const ImageMessageDisplay: React.FC<ImageMessageProps> = ({ filePath, altText, c
   }
   
   if (imageUrl) {
-    return <img src={imageUrl} alt={altText || 'image'} className="max-w-xs max-h-xs rounded" />;
+    return <Image src={imageUrl} alt={altText || 'image'} width={300} height={300} className="max-w-xs max-h-xs rounded" />;
   }
 
   // 初期状態、またはエラーでもなくURLもない場合 (画像取得前など)
@@ -125,7 +126,7 @@ const ImageMessageDisplay: React.FC<ImageMessageProps> = ({ filePath, altText, c
 
 const MessageContent: React.FC<{ content: string }> = ({ content }) => {
   const components: Components = {
-    code: ({ node, className, children, ...props }) => {
+    code: ({ className, children, ...props }) => {
       const match = /language-(\w+)/.exec(className || '');
       const isInline = !match;
       return !isInline ? (

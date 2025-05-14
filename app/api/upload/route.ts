@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const fileName = `${crypto.randomUUID()}.${fileExt}`;
   const filePath = `${userId}/${fileName}`;
 
-  const { data: uploadData, error: uploadError } = await supabase.storage.from('chat-files').upload(filePath, file);
+  const { error: uploadError } = await supabase.storage.from('chat-files').upload(filePath, file);
 
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 });

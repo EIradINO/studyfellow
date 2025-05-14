@@ -23,6 +23,11 @@ interface MediaPart {
   };
 }
 
+interface Transcription {
+  transcription: string;
+  page: number;
+}
+
 // --- ユーティリティ関数 ---
 const handleError = (error: unknown, message: string) => {
   console.error(message, error);
@@ -147,17 +152,22 @@ async function fetchDocumentTranscriptions(
     .order('page', { ascending: true });
 
   if (transError) {
-    throw new Error('ドキュメントの取得に失敗しました');
+    handleError(transError, 'ドキュメントの取得に失敗しました');
   }
 
   if (transcriptions && transcriptions.length > 0) {
-    return transcriptions.map((t: any) => t.transcription).join('\n');
+    return transcriptions.map((t: Transcription) => t.transcription).join('\n');
   }
   return '';
 }
 
-function stringifyHistory(history: {role: string, parts: {text: string}[]}[]): string {
-  const formattedHistory = history.map((h: {role: string, parts: {text: string}[]}) => {
+interface HistoryItem {
+  role: string;
+  parts: {text: string}[];
+}
+
+function stringifyHistory(history: HistoryItem[]): string {
+  const formattedHistory = history.map((h: HistoryItem) => {
     const role = h.role === 'user' ? 'ユーザー' : 'アシスタント';
     return {
       role: role,

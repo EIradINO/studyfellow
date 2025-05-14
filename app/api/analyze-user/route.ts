@@ -9,6 +9,13 @@ interface AnalyzeUserRequest {
   user_id: string;
 }
 
+interface Post {
+  document_id: string;
+  start_page: number;
+  end_page: number;
+  comment: string;
+}
+
 // Supabaseクライアント初期化
 function getSupabaseClient(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -29,7 +36,7 @@ function getGeminiClient() {
 }
 
 // ドキュメントの文脈取得
-async function fetchDocumentContext(supabase: SupabaseClient, post: any): Promise<string> {
+async function fetchDocumentContext(supabase: SupabaseClient, post: Post): Promise<string> {
   const { data: transcriptions, error } = await supabase
     .from('document_transcriptions')
     .select('page, transcription')
