@@ -209,7 +209,7 @@ ${currentReport}
     } else {
       return NextResponse.json({ error: '未対応のtypeです' }, { status: 400 });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '不明なエラーが発生しました';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

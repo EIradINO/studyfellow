@@ -28,6 +28,13 @@ interface Transcription {
   page: number;
 }
 
+interface MediaMessage {
+  id: string;
+  type: 'image' | 'pdf';
+  file_url: string;
+  content: string;
+}
+
 // --- ユーティリティ関数 ---
 const handleError = (error: unknown, message: string) => {
   console.error(message, error);
@@ -224,8 +231,8 @@ export async function POST(req: Request) {
     }
 
     // メディアメッセージの処理
-    const mediaMessages = messages.filter((msg: any) => 
-      (msg.type === 'image' || msg.type === 'pdf') && msg.file_url
+    const mediaMessages = messages.filter((msg): msg is MediaMessage => 
+      (msg.type === 'image' || msg.type === 'pdf') && msg.file_url !== null
     );
     
     const mediaParts: MediaPart[] = [];
