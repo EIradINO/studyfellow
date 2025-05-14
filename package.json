@@ -10,18 +10,16 @@
   },
   "dependencies": {
     "@google/genai": "^0.10.0",
-    "@google/generative-ai": "^0.24.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.49.4",
-    "katex": "^0.16.22",
-    "marked": "^15.0.11",
+    "katex": "^0.16.9",
+    "react-katex": "^3.1.0",
     "next": "15.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-katex": "^3.1.0",
     "react-markdown": "^10.1.0",
     "recharts": "^2.15.3",
-    "rehype-katex": "^7.0.1",
+    "rehype-katex": "^7.0.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0"
@@ -37,7 +35,7 @@
     "@types/react-katex": "^3.0.4",
     "eslint": "^9",
     "eslint-config-next": "15.3.1",
-    "tailwindcss": "^4",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
 }
