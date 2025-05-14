@@ -206,6 +206,9 @@ export default function Home() {
 
     try {
       setIsGenerating(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) throw new Error('ユーザー情報が取得できません');
 
       // 1. コンテキストメッセージの処理
       let contextProcessed = false;
@@ -214,6 +217,7 @@ export default function Home() {
           .from('messages')
           .insert([{
             room_id: currentRoom.id,
+            user_id: userId,
             role: 'user',
             content: newMessage,
             type: 'context',
@@ -238,10 +242,6 @@ export default function Home() {
       // 2. ファイルメッセージの処理
       let fileProcessed = false;
       if (file && newMessage.trim()) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
-        if (!userId) throw new Error('ユーザー情報が取得できません');
-
         const formData = new FormData();
         formData.append('file', file);
         formData.append('user_id', userId);
@@ -259,6 +259,7 @@ export default function Home() {
           .from('messages')
           .insert([{
             room_id: currentRoom.id,
+            user_id: userId,
             role: 'user',
             content: newMessage,
             type: messageType,
@@ -283,6 +284,7 @@ export default function Home() {
           .from('messages')
           .insert([{
             room_id: currentRoom.id,
+            user_id: userId,
             role: 'user',
             content: newMessage,
             type: 'text',

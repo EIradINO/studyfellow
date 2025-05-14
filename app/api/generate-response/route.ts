@@ -334,6 +334,7 @@ export async function POST(req: Request) {
         .from('messages')
         .insert([{
           room_id: body.room_id,
+          user_id: user_id,
           role: 'model',
           content: response.text
         }])
@@ -358,6 +359,7 @@ export async function POST(req: Request) {
         .from('messages')
         .insert([{
           room_id: body.room_id,
+          user_id: user_id,
           role: 'model',
           content: response.text
         }])
