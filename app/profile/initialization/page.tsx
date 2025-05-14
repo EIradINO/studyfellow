@@ -143,7 +143,7 @@ export default function ProfileInitialization() {
 
   const handleNextSubject = () => {
     const selectedSubjectNames = Object.entries(selectedSubjects)
-      .filter(([, selected]) => selected)
+      .filter(([_, selected]) => selected)
       .map(([name]) => name);
     
     if (currentSubjectIndex < selectedSubjectNames.length - 1) {
@@ -190,7 +190,7 @@ export default function ProfileInitialization() {
 
       // 選択された科目の設定データを挿入
       const selectedSubjectNames = Object.entries(selectedSubjects)
-        .filter(([, selected]) => selected)
+        .filter(([_, selected]) => selected)
         .map(([name]) => name);
 
       for (const subjectName of selectedSubjectNames) {
@@ -333,7 +333,7 @@ export default function ProfileInitialization() {
               <>
                 {(() => {
                   const selectedSubjectNames = Object.entries(selectedSubjects)
-                    .filter(([, selected]) => selected)
+                    .filter(([_, selected]) => selected)
                     .map(([name]) => name);
                   const currentSubject = selectedSubjectNames[currentSubjectIndex];
                   const category = Object.values(SUBJECTS).find(cat => cat.subjects.some(s => s.name === currentSubject));
