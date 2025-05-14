@@ -428,14 +428,16 @@ export default function ProfileInitialization() {
                         <button
                           type="button"
                           onClick={handlePrevSubject}
-                          className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-full hover:bg-gray-700"
+                          className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-full hover:bg-gray-700 disabled:opacity-50"
+                          disabled={_saving}
                         >
                           戻る
                         </button>
                         <button
                           type="button"
                           onClick={handleNextSubject}
-                          className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
+                          className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
+                          disabled={_saving}
                         >
                           {currentSubjectIndex < selectedSubjectNames.length - 1 ? '次の科目へ' : '保存'}
                         </button>

@@ -462,7 +462,6 @@ export default function Home() {
             setNewMessage={setNewMessage}
             handleSendMessage={handleSendMessage}
             file={file}
-            _setFile={setFile}
             onFileChange={onFileChange}
             interactive={interactive}
             setInteractive={handleInteractiveToggle}

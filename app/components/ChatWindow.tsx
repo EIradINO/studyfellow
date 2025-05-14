@@ -47,7 +47,6 @@ interface ChatWindowProps {
   setNewMessage: (v: string) => void;
   handleSendMessage: () => void;
   file: File | null;
-  _setFile: (file: File | null) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   interactive: boolean;
   setInteractive: (v: boolean) => void;
@@ -184,7 +183,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   setNewMessage,
   handleSendMessage,
   file,
-  _setFile,
   onFileChange,
   interactive,
   setInteractive,
