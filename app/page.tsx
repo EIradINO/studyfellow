@@ -26,7 +26,7 @@ type Message = {
   role: 'user' | 'model';
   content: string;
   created_at?: string;
-  type?: 'text' | 'image' | 'pdf' | 'file';
+  type?: 'text' | 'image' | 'pdf' | 'context';
   file_url?: string | null;
 };
 
@@ -42,6 +42,11 @@ const SUPPORTED_IMAGE_TYPES = [
   "image/heic",
   "image/heif"
 ];
+
+const handleError = (error: unknown, message: string) => {
+  console.error(message, error);
+  alert(message);
+};
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
@@ -70,7 +75,7 @@ export default function Home() {
   }, [currentRoom]);
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
+    const initializeApp = async () => {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
@@ -84,17 +89,16 @@ export default function Home() {
 
           if (profileError) throw profileError;
           setUserProfile(profile);
-          fetchRooms();
-          fetchDocuments();
+          await Promise.all([fetchRooms(), fetchDocuments()]);
         }
       } catch (error) {
-        console.error('Error:', error);
+        handleError(error, '初期化中にエラーが発生しました');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserProfile();
+    initializeApp();
   }, []);
 
   const fetchRooms = async () => {
@@ -102,19 +106,19 @@ export default function Home() {
       const { data, error } = await supabase
         .from('rooms')
         .select('*')
-        .order('updated_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setRooms(data || []);
-      if (currentRoom) {
-        const currentRoomData = data?.find(room => room.id === currentRoom.id);
-        if (currentRoomData) {
-          setInteractive(currentRoomData.interactive);
-          setInternetSearch(currentRoomData.internet_search);
-        }
+      
+      const latestRoom = data?.[0];
+      if (latestRoom) {
+        setCurrentRoom(latestRoom);
+        setInteractive(latestRoom.interactive);
+        setInternetSearch(latestRoom.internet_search);
       }
     } catch (error) {
-      console.error('Error fetching rooms:', error);
+      handleError(error, 'ルームの取得に失敗しました');
     }
   };
 
@@ -128,7 +132,7 @@ export default function Home() {
       if (error) throw error;
       setDocuments(data || []);
     } catch (error) {
-      console.error('Error fetching documents:', error);
+      handleError(error, 'ドキュメントの取得に失敗しました');
     }
   };
 
@@ -143,7 +147,7 @@ export default function Home() {
       if (error) throw error;
       setMessages(data || []);
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      handleError(error, 'メッセージの取得に失敗しました');
     }
   };
 
@@ -171,7 +175,7 @@ export default function Home() {
       setInteractive(false);
       setInternetSearch(false);
     } catch (error) {
-      console.error('Error creating room:', error);
+      handleError(error, 'ルームの作成に失敗しました');
     }
   };
 
@@ -180,7 +184,7 @@ export default function Home() {
       const file = e.target.files[0];
       if (file.type.startsWith("image/") && !SUPPORTED_IMAGE_TYPES.includes(file.type)) {
         alert("この画像形式はサポートされていません。PNG, JPEG, WEBP, HEIC, HEIFのみアップロード可能です。");
-        e.target.value = ""; // ファイル選択をリセット
+        e.target.value = "";
         return;
       }
       setFile(file);
@@ -195,6 +199,10 @@ export default function Home() {
       alert('ファイルを選択した場合は、ページ範囲を指定してください。');
       return;
     }
+    if (file && !newMessage.trim()) {
+      alert('画像を送信する場合は、テキストメッセージも入力してください。');
+      return;
+    }
 
     try {
       setIsGenerating(true);
@@ -202,13 +210,12 @@ export default function Home() {
       // 1. コンテキストメッセージの処理
       let contextProcessed = false;
       if (selectedDocument && startPage && endPage && currentRoom) {
-        const contextContent = newMessage; // テキストフィールドの内容をそのまま保存
         const { data: contextMsg, error: contextMsgError } = await supabase
           .from('messages')
           .insert([{
             room_id: currentRoom.id,
             role: 'user',
-            content: contextContent, // newMessage を含める
+            content: newMessage,
             type: 'context',
             file_name: selectedDocument.file_name,
             start_page: parseInt(startPage),
@@ -217,16 +224,11 @@ export default function Home() {
           .select()
           .single();
 
-        if (contextMsgError) {
-          console.error('Error saving context message:', contextMsgError);
-          alert('コンテキストメッセージの保存に失敗しました。');
-          setIsGenerating(false);
-          return;
-        }
+        if (contextMsgError) throw contextMsgError;
         if (contextMsg) {
           setMessages(prev => [...prev, contextMsg]);
         }
-        setNewMessage(''); // newMessage もクリア
+        setNewMessage('');
         setSelectedDocument(null);
         setStartPage('');
         setEndPage('');
@@ -235,21 +237,10 @@ export default function Home() {
 
       // 2. ファイルメッセージの処理
       let fileProcessed = false;
-      if (file) {
-        let messageTypeForFile = 'file';
-        if (file.type.startsWith('image/')) {
-          messageTypeForFile = 'image';
-        } else if (file.type === 'application/pdf') {
-          messageTypeForFile = 'pdf';
-        }
-
+      if (file && newMessage.trim()) {
         const { data: { session } } = await supabase.auth.getSession();
         const userId = session?.user?.id;
-        if (!userId) {
-          alert('ユーザー情報が取得できません');
-          setIsGenerating(false);
-          return;
-        }
+        if (!userId) throw new Error('ユーザー情報が取得できません');
 
         const formData = new FormData();
         formData.append('file', file);
@@ -259,29 +250,24 @@ export default function Home() {
         const result = await res.json();
 
         if (res.status !== 200 || !result.filePath) {
-          alert('アップロード失敗、またはファイルパスが取得できません: ' + (result.error || 'Unknown error'));
-          setIsGenerating(false);
-          return;
+          throw new Error('アップロード失敗、またはファイルパスが取得できません: ' + (result.error || 'Unknown error'));
         }
+        
+        const messageType = file.type.startsWith('image/') ? 'image' : 'pdf';
         
         const { data: fileMsg, error: fileMsgError } = await supabase
           .from('messages')
           .insert([{
             room_id: currentRoom.id,
             role: 'user',
-            content: result.fileName, // ファイル名
-            type: messageTypeForFile,
+            content: newMessage,
+            type: messageType,
             file_url: result.filePath,
           }])
           .select()
           .single();
 
-        if (fileMsgError) {
-          console.error('Error saving file message:', fileMsgError);
-          alert('ファイルメッセージの保存に失敗しました。');
-          setIsGenerating(false);
-          return;
-        }
+        if (fileMsgError) throw fileMsgError;
         if (fileMsg) {
           setMessages(prev => [...prev, fileMsg]);
         }
@@ -291,32 +277,27 @@ export default function Home() {
         fileProcessed = true;
       }
 
-      // 3. 通常のテキストメッセージの処理 (ファイルが処理されなかった場合、かつcontextでない場合のみ)
+      // 3. 通常のテキストメッセージの処理
       if (!fileProcessed && !contextProcessed && newMessage.trim()) {
         const { data: textMsg, error: textMsgError } = await supabase
           .from('messages')
           .insert([{
             room_id: currentRoom.id,
             role: 'user',
-            content: newMessage, // newMessage の内容
+            content: newMessage,
             type: 'text',
           }])
           .select()
           .single();
 
-        if (textMsgError) {
-          console.error('Error saving text message:', textMsgError);
-          alert('テキストメッセージの保存に失敗しました。');
-          setIsGenerating(false);
-          return;
-        }
+        if (textMsgError) throw textMsgError;
         if (textMsg) {
           setMessages(prev => [...prev, textMsg]);
         }
       }
 
       // generate-response API を発火
-      if (contextProcessed || (!fileProcessed && newMessage.trim())) {
+      if (contextProcessed || fileProcessed || (!fileProcessed && newMessage.trim())) {
         try {
           await fetch('/api/generate-response', {
             method: 'POST',
@@ -332,16 +313,66 @@ export default function Home() {
         }
       }
 
-      // 4. 最終的なクリア処理
-      setNewMessage(''); // 全ての処理が終わったのでクリア
-
+      setNewMessage('');
       await fetchMessages(currentRoom.id);
 
     } catch (error) {
-      console.error('Error sending message:', error);
-      alert('メッセージの送信中にエラーが発生しました。');
+      handleError(error, 'メッセージの送信中にエラーが発生しました');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleInteractiveToggle = async (newValue: boolean) => {
+    if (!currentRoom) return;
+    
+    setInteractive(newValue);
+    
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ interactive: newValue })
+        .eq('id', currentRoom.id);
+
+      if (error) {
+        setInteractive(!newValue);
+        throw error;
+      }
+
+      const { error: messageError } = await supabase
+        .from('messages')
+        .insert([{
+          room_id: currentRoom.id,
+          role: 'model',
+          content: newValue ? '探究学習モードをonにしました' : '探究学習モードをoffにしました',
+          type: 'text'
+        }]);
+
+      if (messageError) throw messageError;
+      await fetchMessages(currentRoom.id);
+
+    } catch (error) {
+      handleError(error, '対話モードの更新に失敗しました');
+    }
+  };
+
+  const handleInternetSearchToggle = async (newValue: boolean) => {
+    if (!currentRoom) return;
+    
+    setInternetSearch(newValue);
+    
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ internet_search: newValue })
+        .eq('id', currentRoom.id);
+
+      if (error) {
+        setInternetSearch(!newValue);
+        throw error;
+      }
+    } catch (error) {
+      handleError(error, '検索モードの更新に失敗しました');
     }
   };
 
@@ -354,53 +385,27 @@ export default function Home() {
       setCurrentRoom(null);
       setMessages([]);
     } catch (error) {
-      console.error('Error:', error);
+      handleError(error, 'ログアウトに失敗しました');
     }
   };
 
-  const handleInteractiveToggle = async (newValue: boolean) => {
-    if (!currentRoom) return;
-    
-    // 先にUIを更新
-    setInteractive(newValue);
-    
+  const handleRoomChange = async (room: Room) => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('rooms')
-        .update({ interactive: newValue })
-        .eq('id', currentRoom.id);
+        .select('*')
+        .eq('id', room.id)
+        .single();
 
-      if (error) {
-        // エラーが発生した場合は元の状態に戻す
-        setInteractive(!newValue);
-        throw error;
+      if (error) throw error;
+      if (data) {
+        setCurrentRoom(data);
+        setInteractive(data.interactive);
+        setInternetSearch(data.internet_search);
+        await fetchMessages(data.id);
       }
     } catch (error) {
-      console.error('Error updating interactive mode:', error);
-      alert('対話モードの更新に失敗しました。');
-    }
-  };
-
-  const handleInternetSearchToggle = async (newValue: boolean) => {
-    if (!currentRoom) return;
-    
-    // 先にUIを更新
-    setInternetSearch(newValue);
-    
-    try {
-      const { error } = await supabase
-        .from('rooms')
-        .update({ internet_search: newValue })
-        .eq('id', currentRoom.id);
-
-      if (error) {
-        // エラーが発生した場合は元の状態に戻す
-        setInternetSearch(!newValue);
-        throw error;
-      }
-    } catch (error) {
-      console.error('Error updating internet search mode:', error);
-      alert('検索モードの更新に失敗しました。');
+      handleError(error, 'ルームの切り替えに失敗しました');
     }
   };
 
@@ -438,7 +443,7 @@ export default function Home() {
           <RoomList
             rooms={rooms}
             currentRoom={currentRoom}
-            setCurrentRoom={setCurrentRoom}
+            setCurrentRoom={handleRoomChange}
             fetchMessages={fetchMessages}
             createNewRoom={createNewRoom}
           />

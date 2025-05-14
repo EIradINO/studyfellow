@@ -19,7 +19,7 @@ type Message = {
   role: 'user' | 'model';
   content: string;
   created_at?: string;
-  type?: 'text' | 'image' | 'pdf' | 'file' | 'context';
+  type?: 'text' | 'image' | 'pdf' | 'context';
   file_url?: string | null;
   file_name?: string | null;
   start_page?: number | null;
@@ -231,17 +231,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       <div className="flex-1 overflow-y-auto mb-4 space-y-4">
         {messages.map((message) => {
           const isImageMessage = message.type === 'image' && message.file_url;
-          const isFileMessage = message.type === 'file';
+          const isPdfMessage = message.type === 'pdf' && message.file_url;
           const isContextMessage = message.type === 'context';
           
-          const bubbleClassName = isImageMessage 
+          const bubbleClassName = isImageMessage || isPdfMessage
             ? 'max-w-[100%]'
-            : isFileMessage
-            ? `max-w-[100%] rounded-lg px-4 py-2 ${
-                message.role === 'user' 
-                  ? 'bg-green-600 text-white'
-                  : 'bg-green-500 text-white'
-              }`
             : isContextMessage
             ? 'max-w-[100%] bg-green-200 text-green-900 rounded-lg px-4 py-2 border border-green-400'
             : `max-w-[100%] rounded-lg px-4 py-2 ${
@@ -257,14 +251,32 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             >
               <div className={bubbleClassName}>
                 {isImageMessage ? (
-                  <ImageMessageDisplay 
-                    filePath={message.file_url!}
-                    altText={message.content || 'image'} 
-                    cache={signedUrlCache} 
-                    updateCache={updateCache} 
-                  />
-                ) : isFileMessage ? (
-                  <span>{message.content}</span>
+                  <div className="space-y-2">
+                    <ImageMessageDisplay 
+                      filePath={message.file_url!}
+                      altText={message.content || 'image'} 
+                      cache={signedUrlCache} 
+                      updateCache={updateCache} 
+                    />
+                    {message.content && (
+                      <div className="mt-2">
+                        <MessageContent content={message.content} />
+                      </div>
+                    )}
+                  </div>
+                ) : isPdfMessage ? (
+                  <div className="space-y-2">
+                    <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded">
+                      <a href={message.file_url!} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        PDFファイルを開く
+                      </a>
+                    </div>
+                    {message.content && (
+                      <div className="mt-2">
+                        <MessageContent content={message.content} />
+                      </div>
+                    )}
+                  </div>
                 ) : isContextMessage ? (
                   <div>
                     <div className="text-xs font-bold text-green-800 mb-1">
@@ -397,7 +409,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
           <button
             onClick={handleSendMessage}
-            disabled={(!newMessage.trim() && !file) || isGenerating}
+            disabled={(!newMessage.trim() && !file) || (file && !newMessage.trim()) || isGenerating}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             送信
