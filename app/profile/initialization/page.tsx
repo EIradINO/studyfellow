@@ -49,7 +49,7 @@ const SUBJECTS = {
 export default function ProfileInitialization() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [_saving, _setSaving] = useState(false);
   const [step, setStep] = useState(1);
   const [userData, setUserData] = useState({
     display_name: '',
@@ -164,7 +164,7 @@ export default function ProfileInitialization() {
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     try {
-      setSaving(true);
+      _setSaving(true);
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session) {
         router.push(`/error?message=${encodeURIComponent('セッションの取得に失敗しました。再度ログインしてください。')}`);
@@ -236,7 +236,7 @@ export default function ProfileInitialization() {
       console.error('Error:', error);
       router.push(`/error?message=${encodeURIComponent('プロフィールの更新に失敗しました。')}`);
     } finally {
-      setSaving(false);
+      _setSaving(false);
     }
   };
 
