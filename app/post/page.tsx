@@ -43,7 +43,6 @@ type PostMessageToAI = {
 
 export default function Post() {
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<UserProfile>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<string>('');
@@ -73,33 +72,28 @@ export default function Post() {
     }
   }, []);
 
-  const fetchUserProfile = useCallback(async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      if (session?.user) {
-        const { data: profile, error: profileError } = await supabase
-          .from('users')
-          .select('display_name, user_name')
-          .eq('user_id', session.user.id)
-          .single();
-
-        if (profileError) throw profileError;
-        setUserProfile(profile);
-        fetchUserDocuments(session.user.id);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchUserDocuments]);
-
   useEffect(() => {
-    fetchUserProfile();
-    fetchPosts();
-  }, [fetchUserProfile]);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+
+        if (session?.user) {
+          fetchUserDocuments(session.user.id);
+        } else {
+          // ユーザーがログインしていない場合の処理（必要に応じて）
+          setDocuments([]); // 例: ドキュメントリストを空にする
+        }
+        fetchPosts();
+      } catch (error) {
+        console.error('Error in useEffect:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [fetchUserDocuments]);
 
   const fetchDocuments = async (documentIds: string[]) => {
     if (documentIds.length === 0) {
@@ -247,45 +241,8 @@ export default function Post() {
     );
   }
 
-  if (!userProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            投稿を作成するにはログインが必要です
-          </p>
-          <button
-            onClick={() => supabase.auth.signInWithOAuth({
-              provider: 'google',
-              options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
-              },
-            })}
-            className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
-          >
-            Googleでログイン
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <header className="bg-white dark:bg-gray-800 shadow-sm">
-        <div className="container mx-auto px-6 py-4">
-          <nav className="flex justify-between items-center">
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">投稿</div>
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <p className="font-medium text-gray-900 dark:text-white">{userProfile.display_name}</p>
-                <p className="text-gray-500 dark:text-gray-400">@{userProfile.user_name}</p>
-              </div>
-            </div>
-          </nav>
-        </div>
-      </header>
-
       <main className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* 左側: 投稿フォーム */}

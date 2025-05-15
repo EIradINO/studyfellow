@@ -226,8 +226,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     );
   }
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+    <div className="flex-1 flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto space-y-4">
         {messages.map((message) => {
           const isImageMessage = message.type === 'image' && message.file_url;
           const isPdfMessage = message.type === 'pdf' && message.file_url;
@@ -306,7 +306,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         )}
       </div>
-      <div className="space-y-2">
+      <div className="space-y-2 mt-auto p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
           {documents.map((doc) => (
             <button

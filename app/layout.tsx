@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
+import Navigation from "./components/Navigation";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,19 +24,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <nav className="bg-white dark:bg-gray-800 shadow-sm mb-4">
-          <div className="container mx-auto px-6 py-3 flex gap-6">
-            <Link href="/" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ホーム</Link>
-            <Link href="/library" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ライブラリ</Link>
-            <Link href="/post" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">投稿</Link>
-            <Link href="/report" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">レポート</Link>
-          </div>
-        </nav>
-        {children}
+    <html lang="ja">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
+          <Navigation />
+          <main className="flex-1 ml-[240px]">{children}</main>
+        </div>
       </body>
     </html>
   );
