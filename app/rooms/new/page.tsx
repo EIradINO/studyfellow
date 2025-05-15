@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
@@ -18,7 +18,6 @@ interface DocumentMetadata {
 }
 
 export default function NewRoomPage() {
-  const [title, setTitle] = useState('');
   const [interactive, setInteractive] = useState(false);
   const [internetSearch, setInternetSearch] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -76,10 +75,6 @@ export default function NewRoomPage() {
   const handleCreateRoomAndSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    if (!title.trim()) {
-      setError('ルームタイトルを入力してください。');
-      return;
-    }
     if (!user) {
       setError('ユーザー情報が取得できませんでした。再度お試しください。');
       return;
@@ -106,7 +101,7 @@ export default function NewRoomPage() {
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
         .insert({
-          title: title.trim(),
+          title: '新しいルーム',
           user_id: user.id,
           interactive: interactive,
           internet_search: internetSearch,
@@ -283,7 +278,7 @@ export default function NewRoomPage() {
             <div className="flex-1 flex flex-col justify-end">
               <button
                 type="submit"
-                disabled={isLoading || !title.trim() || (!newMessage.trim() && !file && !selectedDocument)}
+                disabled={isLoading || !user}
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 px-4 rounded-lg shadow-lg transition-colors text-base disabled:opacity-60 disabled:cursor-not-allowed mt-4"
               >
                 {isLoading ? '作成中...' : 'ルームを作成してメッセージを送信'}
