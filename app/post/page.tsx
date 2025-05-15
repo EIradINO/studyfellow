@@ -4,11 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
 import Link from 'next/link';
 
-type UserProfile = {
-  display_name: string;
-  user_name: string;
-} | null;
-
 type Document = {
   id: string;
   file_name: string;

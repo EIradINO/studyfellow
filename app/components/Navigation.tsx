@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabase';
 import { UserCircle } from 'lucide-react';
@@ -90,7 +91,13 @@ export default function Navigation() {
         <div className="mt-6 pt-4 border-t border-gray-300 dark:border-gray-700">
           <Link href={`/${userProfile.user_name}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
             {userProfile.avatar_url ? (
-              <img src={userProfile.avatar_url} alt={userProfile.display_name} className="w-10 h-10 rounded-full object-cover" />
+              <Image
+                src={userProfile.avatar_url}
+                alt={userProfile.display_name}
+                width={40}
+                height={40}
+                className="rounded-full object-cover"
+              />
             ) : (
               <UserCircle className="w-10 h-10 text-gray-600 dark:text-gray-400" />
             )}

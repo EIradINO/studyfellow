@@ -52,9 +52,9 @@ export default function NewRoomPage() {
           } else if (userDocs) {
             setDocuments(userDocs);
           }
-        } catch (docError: any) {
+        } catch (docError: unknown) {
           console.error('ドキュメントの取得処理中にエラー:', docError, JSON.stringify(docError));
-          setError('引用可能なドキュメントの読み込み中に予期せぬエラーが発生しました: ' + (docError.message || JSON.stringify(docError)));
+          setError('引用可能なドキュメントの読み込み中に予期せぬエラーが発生しました: ' + (docError instanceof Error ? docError.message : JSON.stringify(docError)));
           setDocuments([]);
         }
       } else {
@@ -169,9 +169,9 @@ export default function NewRoomPage() {
         }),
       });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('処理中にエラーが発生しました:', err);
-      setError(err.message || 'ルームとメッセージの作成中にエラーが発生しました。');
+      setError(err instanceof Error ? err.message : 'ルームとメッセージの作成中にエラーが発生しました。');
     } finally {
       setIsLoading(false);
     }
