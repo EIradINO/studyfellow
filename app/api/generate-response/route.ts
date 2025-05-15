@@ -2,6 +2,10 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from 'next/server';
 
+export const config = {
+  maxDuration: 60,
+};
+
 // --- 型定義 ---
 interface ChatSettingSub {
   field: string;
