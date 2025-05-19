@@ -61,13 +61,6 @@ export default function Navigation() {
       </div>
 
       <div className="flex-grow flex flex-col gap-4">
-        <Link href="/" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">ホーム</Link>
-        <Link
-          href="/rooms/new"
-          className="block w-full text-center font-bold rounded-full py-3 bg-blue-600 text-white shadow hover:bg-blue-700 transition-colors text-lg"
-        >
-          新しいチャット
-        </Link>
         <div className="mt-2 flex flex-col gap-2 overflow-y-auto">
           {rooms.map(room => (
             <Link
@@ -80,7 +73,13 @@ export default function Navigation() {
           ))}
         </div>
         <Link
-          href="/post"
+          href="/rooms/new"
+          className="block w-full text-center font-bold rounded-full py-3 bg-blue-600 text-white shadow hover:bg-blue-700 transition-colors text-lg"
+        >
+          質問する
+        </Link>
+        <Link
+          href="/posts/new"
           className="block w-full text-center font-bold rounded-full py-3 bg-white text-gray-900 dark:bg-gray-900 dark:text-white shadow hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-lg mt-auto"
         >
           投稿する

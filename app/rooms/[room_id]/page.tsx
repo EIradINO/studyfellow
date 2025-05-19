@@ -261,6 +261,7 @@ export default function RoomPage() {
               room_id: currentRoom.id,
               interactive: interactive,
               internet_search: internet_search,
+              type: 'room',
             }),
           });
         } catch (err) {

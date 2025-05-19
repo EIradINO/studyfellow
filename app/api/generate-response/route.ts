@@ -194,12 +194,77 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log('[generate-response] Request body:', body);
 
+    const supabase = getSupabaseClient();
+    const genAI = getGeminiClient();
+
+    // type分岐
+    if (body.type === 'post') {
+      if (!body.post_id) {
+        throw new Error('post_idが必要です');
+      }
+      // post取得
+      const { data: post, error: postError } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('id', body.post_id)
+        .single();
+      if (postError || !post) {
+        throw new Error('該当するpostが見つかりません');
+      }
+      // ドキュメントの該当ページ範囲のテキスト取得
+      const { data: transcriptions, error: transcriptionError } = await supabase
+        .from('document_transcriptions')
+        .select('page, transcription')
+        .eq('document_id', post.document_id)
+        .gte('page', post.start_page)
+        .lte('page', post.end_page)
+        .order('page');
+      if (transcriptionError) {
+        throw new Error('ドキュメントの取得に失敗しました');
+      }
+      const context = (transcriptions || [])
+        .map((t: any) => `[ページ${t.page}]\n${t.transcription}`)
+        .join('\n\n');
+      // 最初の履歴（ユーザーのコメント）
+      const history = [
+        { role: 'user', parts: [{ text: `${context}\n---\n${post.comment}` }] }
+      ];
+      // post_messages_to_aiから履歴を取得
+      const { data: aiMessages, error: aiMessagesError } = await supabase
+        .from('post_messages_to_ai')
+        .select('content, role, created_at')
+        .eq('post_id', body.post_id)
+        .order('created_at', { ascending: true });
+      if (aiMessagesError) {
+        throw new Error('AIメッセージ履歴の取得に失敗しました');
+      }
+      for (const msg of aiMessages || []) {
+        history.push({ role: msg.role, parts: [{ text: msg.content }] });
+      }
+      // Gemini API呼び出し
+      const chat = genAI.chats.create({
+        model: 'gemini-2.0-flash',
+        history: history,
+      });
+      const response = await chat.sendMessage({ message: post.comment });
+      // AI応答を保存
+      const { error: insertError } = await supabase
+        .from('post_messages_to_ai')
+        .insert({
+          post_id: body.post_id,
+          content: response.text,
+          role: 'model',
+        });
+      if (insertError) {
+        throw new Error('AI応答の保存に失敗しました');
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    // --- 既存のroom処理 ---
     if (!body.room_id) {
       throw new Error('room_idが必要です');
     }
-
-    const supabase = getSupabaseClient();
-    const genAI = getGeminiClient();
 
     // room_idからuser_idを取得
     const { data: room, error: roomError } = await supabase

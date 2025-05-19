@@ -10,7 +10,7 @@ interface DocumentMetadata {
   id: string;
   file_name: string;
   bucket: string;
-  title: string | null; // title は nullable の可能性も考慮
+  title: string | null;
   total_pages: number | null;
   file_size: number | null;
   created_at: string;

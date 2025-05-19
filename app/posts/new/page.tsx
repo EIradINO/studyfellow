@@ -26,6 +26,9 @@ type Post = {
   };
   messages?: PostMessageToAI[];
   duration?: number;
+  interactive: boolean;
+  internet_search: boolean;
+  file_url: string[];
 };
 
 type PostMessageToAI = {
@@ -34,6 +37,46 @@ type PostMessageToAI = {
   content: string;
   role: string;
   created_at: string;
+};
+
+// 画像表示用コンポーネント
+const PostImageDisplay: React.FC<{ filePath: string; altText: string }> = ({ filePath, altText }) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSignedUrl = useCallback(async () => {
+    setError(null);
+    try {
+      const expiresIn = 60 * 5;
+      const { data, error: signedUrlError } = await supabase
+        .storage
+        .from('chat-files')
+        .createSignedUrl(filePath, expiresIn);
+      if (signedUrlError) {
+        setError(signedUrlError.message);
+        setImageUrl(null);
+      } else if (data && data.signedUrl) {
+        setImageUrl(data.signedUrl);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setImageUrl(null);
+    }
+  }, [filePath]);
+
+  useEffect(() => {
+    if (filePath) {
+      fetchSignedUrl();
+    }
+  }, [filePath, fetchSignedUrl]);
+
+  if (error) {
+    return <div className="text-xs text-red-500">画像読み込みエラー: {error} <button onClick={fetchSignedUrl} className="ml-2 px-1 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 rounded">再試行</button></div>;
+  }
+  if (imageUrl) {
+    return <img src={imageUrl} alt={altText || 'image'} className="w-20 h-20 object-cover rounded border" />;
+  }
+  return null;
 };
 
 export default function Post() {
@@ -46,6 +89,10 @@ export default function Post() {
   const [comment, setComment] = useState('');
   const [durationHour, setDurationHour] = useState('');
   const [durationMinute, setDurationMinute] = useState('');
+  const [interactive, setInteractive] = useState(false);
+  const [internetSearch, setInternetSearch] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileUrls, setFileUrls] = useState<string[]>([]);
 
   const fetchUserDocuments = useCallback(async (userId: string) => {
     try {
@@ -129,7 +176,10 @@ export default function Post() {
             role,
             created_at
           ),
-          duration
+          duration,
+          interactive,
+          internet_search,
+          file_url
         `)
         .order('created_at', { ascending: false });
 
@@ -162,13 +212,22 @@ export default function Post() {
             role: msg.role,
             created_at: msg.created_at
           })),
-          duration: post.duration
+          duration: post.duration,
+          interactive: post.interactive,
+          internet_search: post.internet_search,
+          file_url: post.file_url || []
         };
       }));
 
       setPosts(enhancedPosts);
     } catch (error) {
       console.error('Error fetching posts:', error);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFiles(Array.from(e.target.files));
     }
   };
 
@@ -186,6 +245,22 @@ export default function Post() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error('Not authenticated');
+      // 1. ファイルアップロード
+      let uploadedUrls: string[] = [];
+      if (files.length > 0) {
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('user_id', session.user.id);
+          const res = await fetch('/api/upload', { method: 'POST', body: formData });
+          const result = await res.json();
+          if (res.status !== 200 || !result.filePath) {
+            throw new Error('アップロード失敗: ' + (result.error || 'Unknown error'));
+          }
+          uploadedUrls.push(result.filePath);
+        }
+      }
+      // 2. 投稿作成
       const { data: post, error: postError } = await supabase
         .from('posts')
         .insert([{
@@ -194,12 +269,13 @@ export default function Post() {
           start_page: parseInt(startPage),
           end_page: parseInt(endPage),
           comment: comment.trim(),
-          duration: duration
+          duration: duration,
+          file_url: uploadedUrls, // text[]
+          interactive: interactive,
+          internet_search: internetSearch
         }])
         .select()
         .single();
-      // 投稿を再取得
-      fetchPosts();
       if (postError) throw postError;
       setSelectedDocument('');
       setStartPage('');
@@ -207,20 +283,26 @@ export default function Post() {
       setComment('');
       setDurationHour('');
       setDurationMinute('');
-
-      // AIの返信を生成
-      const response = await fetch('/api/generate-post-response', {
+      setFiles([]);
+      setFileUrls([]);
+      setInteractive(false);
+      setInternetSearch(false);
+      // 3. AIの返信を生成
+      const response = await fetch('/api/generate-response', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ post })
+        body: JSON.stringify({
+          type: 'post',
+          post_id: post.id,
+          interactive: interactive,
+          internet_search: internetSearch
+        })
       });
-
       if (!response.ok) {
         throw new Error('AIの返信生成に失敗しました');
       }
-
       fetchPosts();
     } catch (error) {
       console.error('Error creating post:', error);
@@ -344,6 +426,37 @@ export default function Post() {
                     </div>
                   </div>
 
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={interactive} onChange={e => setInteractive(e.target.checked)} />
+                      <span>探究学習モード</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={internetSearch} onChange={e => setInternetSearch(e.target.checked)} />
+                      <span>検索モード</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      写真・PDFを添付（複数可）
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleFileChange}
+                      className="w-full"
+                    />
+                    {files.length > 0 && (
+                      <ul className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                        {files.map((file, idx) => (
+                          <li key={idx}>{file.name}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
                   <button
                     onClick={handleCreatePost}
                     disabled={!selectedDocument || !startPage || !endPage || !comment.trim()}
@@ -369,67 +482,69 @@ export default function Post() {
           {/* 右側: 投稿一覧 */}
           <div className="space-y-6">
             {posts.map((post) => (
-              <div key={post.id} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">
-                      {post.user.display_name}
-                    </h3>
+              <Link href={`/posts/${post.id}`} key={post.id} className="block">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:bg-blue-50 dark:hover:bg-gray-700 transition cursor-pointer">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-medium text-gray-900 dark:text-white">
+                        {post.user.display_name}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        @{post.user.user_name}
+                      </p>
+                    </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      @{post.user.user_name}
+                      {new Date(post.created_at).toLocaleString('ja-JP')}
                     </p>
                   </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date(post.created_at).toLocaleString('ja-JP')}
-                  </p>
-                </div>
-                <div className="mb-4">
-                  <p className="text-sm text-blue-600 dark:text-blue-400">
-                    {post.document.file_name}
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    ページ {post.start_page} - {post.end_page}
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {post.duration !== undefined && post.duration !== null
-                      ? `${Math.floor(post.duration / 60)}時間${post.duration % 60}分`
-                      : ''}
-                  </p>
-                </div>
-                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                  {post.comment}
-                </p>
-                {post.messages && post.messages.length > 0 && (
-                  <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">AIとの対話</h4>
-                    <div className="space-y-2">
-                      {post.messages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${
-                            message.role === 'user' ? 'justify-end' : 'justify-start'
-                          }`}
-                        >
-                          <div
-                            className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                              message.role === 'user'
-                                ? 'bg-blue-100 dark:bg-blue-900'
-                                : 'bg-gray-100 dark:bg-gray-700'
-                            }`}
-                          >
-                            <p className="text-sm text-gray-800 dark:text-gray-200">
-                              {message.content}
-                            </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {new Date(message.created_at).toLocaleString('ja-JP')}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="flex gap-2 mb-2">
+                    {post.interactive && (
+                      <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">探究学習モード</span>
+                    )}
+                    {post.internet_search && (
+                      <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded">検索モード</span>
+                    )}
                   </div>
-                )}
-              </div>
+                  {Array.isArray(post.file_url) && post.file_url.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {post.file_url.map((url: string, idx: number) => {
+                        if (url.match(/\.(png|jpe?g|webp|gif|heic|heif)$/i)) {
+                          return (
+                            <PostImageDisplay filePath={url} altText={`添付画像${idx + 1}`} key={idx} />
+                          );
+                        } else if (url.match(/\.pdf$/i)) {
+                          return (
+                            <a href={url} target="_blank" rel="noopener noreferrer" key={idx} className="flex items-center gap-1 px-2 py-1 border rounded text-xs bg-gray-100 dark:bg-gray-700">
+                              <span className="material-icons text-red-500">picture_as_pdf</span>
+                              PDF{idx + 1}
+                            </a>
+                          );
+                        } else {
+                          return (
+                            <a href={url} target="_blank" rel="noopener noreferrer" key={idx} className="text-xs underline">ファイル{idx + 1}</a>
+                          );
+                        }
+                      })}
+                    </div>
+                  )}
+                  <div className="mb-4">
+                    <p className="text-sm text-blue-600 dark:text-blue-400">
+                      {post.document.file_name}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      ページ {post.start_page} - {post.end_page}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {post.duration !== undefined && post.duration !== null
+                        ? `${Math.floor(post.duration / 60)}時間${post.duration % 60}分`
+                        : ''}
+                    </p>
+                  </div>
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                    {post.comment}
+                  </p>
+                </div>
+              </Link>
             ))}
 
             {posts.length === 0 && (
