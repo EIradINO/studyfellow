@@ -1,55 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { supabase } from '@/utils/supabase';
-import { UserCircle } from 'lucide-react';
 
 interface Room {
   id: string;
   title: string;
 }
 
-type UserProfile = {
-  display_name: string;
-  user_name: string;
-  avatar_url?: string;
-} | null;
+// User profile type removed (profile functionality deleted)
 
 export default function Navigation() {
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [userProfile, setUserProfile] = useState<UserProfile>(null);
 
   useEffect(() => {
-    const fetchRoomsAndProfile = async () => {
-      const { data: roomsData, error: roomsError } = await supabase
-        .from('rooms')
-        .select('id, title')
-        .order('created_at', { ascending: false });
-      if (!roomsError && roomsData) setRooms(roomsData);
-
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-
-        if (session?.user) {
-          const { data: profile, error: profileError } = await supabase
-            .from('users')
-            // 'avatar_url' を一時的にコメントアウト
-            .select('display_name, user_name') 
-            // .select('display_name, user_name, avatar_url') 
-            .eq('user_id', session.user.id)
-            .single();
-
-          if (profileError) throw profileError;
-          setUserProfile(profile);
-        }
-      } catch (error) {
-        console.error('ユーザープロファイルの取得中にエラーが発生しました', error);
-      }
+    const fetchRooms = async () => {
+      // const { data: roomsData, error: roomsError } = await supabase
+      //   .from('rooms')
+      //   .select('id, title')
+      //   .order('created_at', { ascending: false });
+      // if (!roomsError && roomsData) setRooms(roomsData);
     };
-    fetchRoomsAndProfile();
+    fetchRooms();
   }, []);
 
   return (
@@ -78,35 +50,10 @@ export default function Navigation() {
         >
           質問する
         </Link>
-        <Link
-          href="/posts/new"
-          className="block w-full text-center font-bold rounded-full py-3 bg-white text-gray-900 dark:bg-gray-900 dark:text-white shadow hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-lg mt-auto"
-        >
-          投稿する
-        </Link>
+
       </div>
 
-      {userProfile && (
-        <div className="mt-6 pt-4 border-t border-gray-300 dark:border-gray-700">
-          <Link href={`/${userProfile.user_name}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
-            {userProfile.avatar_url ? (
-              <Image
-                src={userProfile.avatar_url}
-                alt={userProfile.display_name}
-                width={40}
-                height={40}
-                className="rounded-full object-cover"
-              />
-            ) : (
-              <UserCircle className="w-10 h-10 text-gray-600 dark:text-gray-400" />
-            )}
-            <div className="flex flex-col">
-              <span className="font-semibold text-gray-800 dark:text-gray-200">{userProfile.display_name}</span>
-              <span className="text-sm text-gray-600 dark:text-gray-400">@{userProfile.user_name}</span>
-            </div>
-          </Link>
-        </div>
-      )}
+
     </nav>
   );
 } 

@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from 'next/server';
 
@@ -46,15 +46,6 @@ const handleError = (error: unknown, message: string) => {
 };
 
 // --- クライアント初期化関数 ---
-function getSupabaseClient(): SupabaseClient {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Supabaseの認証情報が設定されていません');
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
-}
-
 function getGeminiClient() {
   const googleApiKey = process.env.GOOGLE_API_KEY;
   if (!googleApiKey) {
@@ -64,7 +55,14 @@ function getGeminiClient() {
 }
 
 // --- データ取得関数 ---
-async function fetchUserInstantReport(supabase: SupabaseClient, user_id: string): Promise<string> {
+async function fetchUserInstantReport(user_id: string): Promise<string> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Supabaseの認証情報が設定されていません');
+  }
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
   const { data: report, error } = await supabase
     .from('user_instant_reports')
     .select('content')
@@ -81,7 +79,14 @@ async function fetchUserInstantReport(supabase: SupabaseClient, user_id: string)
   return '';
 }
 
-async function fetchUserChatSettings(supabase: SupabaseClient, user_id: string): Promise<string> {
+async function fetchUserChatSettings(user_id: string): Promise<string> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Supabaseの認証情報が設定されていません');
+  }
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
   const { data: settings, error: settingsError } = await supabase
     .from('user_chat_settings')
     .select(`
@@ -121,7 +126,14 @@ async function fetchUserChatSettings(supabase: SupabaseClient, user_id: string):
 }
 
 // --- メディア処理関数 ---
-async function fetchImageAsBase64(supabase: SupabaseClient, filePath: string): Promise<{base64: string, mimeType: string}> {
+async function fetchImageAsBase64(filePath: string): Promise<{base64: string, mimeType: string}> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Supabaseの認証情報が設定されていません');
+  }
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
   const { data, error } = await supabase.storage.from('chat-files').createSignedUrl(filePath, 60 * 5);
   if (error || !data?.signedUrl) throw new Error(`画像の署名付きURL生成に失敗: ${filePath}`);
   
@@ -134,7 +146,14 @@ async function fetchImageAsBase64(supabase: SupabaseClient, filePath: string): P
   return { base64, mimeType: contentType };
 }
 
-async function fetchPdfAsBase64(supabase: SupabaseClient, filePath: string): Promise<{base64: string, mimeType: string}> {
+async function fetchPdfAsBase64(filePath: string): Promise<{base64: string, mimeType: string}> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Supabaseの認証情報が設定されていません');
+  }
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
   const { data, error } = await supabase.storage.from('chat-files').createSignedUrl(filePath, 60 * 5);
   if (error || !data?.signedUrl) throw new Error(`PDFの署名付きURL生成に失敗: ${filePath}`);
   
@@ -149,11 +168,17 @@ async function fetchPdfAsBase64(supabase: SupabaseClient, filePath: string): Pro
 
 // --- メッセージ処理関数 ---
 async function fetchDocumentTranscriptions(
-  supabase: SupabaseClient,
   file_name: string,
   start_page: number,
   end_page: number
 ): Promise<string> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Supabaseの認証情報が設定されていません');
+  }
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
   const { data: transcriptions, error: transError } = await supabase
     .from('document_transcriptions')
     .select('transcription, page')
@@ -194,72 +219,9 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log('[generate-response] Request body:', body);
 
-    const supabase = getSupabaseClient();
     const genAI = getGeminiClient();
 
-    // type分岐
-    if (body.type === 'post') {
-      if (!body.post_id) {
-        throw new Error('post_idが必要です');
-      }
-      // post取得
-      const { data: post, error: postError } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('id', body.post_id)
-        .single();
-      if (postError || !post) {
-        throw new Error('該当するpostが見つかりません');
-      }
-      // ドキュメントの該当ページ範囲のテキスト取得
-      const { data: transcriptions, error: transcriptionError } = await supabase
-        .from('document_transcriptions')
-        .select('page, transcription')
-        .eq('document_id', post.document_id)
-        .gte('page', post.start_page)
-        .lte('page', post.end_page)
-        .order('page');
-      if (transcriptionError) {
-        throw new Error('ドキュメントの取得に失敗しました');
-      }
-      const context = (transcriptions || [])
-        .map((t: any) => `[ページ${t.page}]\n${t.transcription}`)
-        .join('\n\n');
-      // 最初の履歴（ユーザーのコメント）
-      const history = [
-        { role: 'user', parts: [{ text: `${context}\n---\n${post.comment}` }] }
-      ];
-      // post_messages_to_aiから履歴を取得
-      const { data: aiMessages, error: aiMessagesError } = await supabase
-        .from('post_messages_to_ai')
-        .select('content, role, created_at')
-        .eq('post_id', body.post_id)
-        .order('created_at', { ascending: true });
-      if (aiMessagesError) {
-        throw new Error('AIメッセージ履歴の取得に失敗しました');
-      }
-      for (const msg of aiMessages || []) {
-        history.push({ role: msg.role, parts: [{ text: msg.content }] });
-      }
-      // Gemini API呼び出し
-      const chat = genAI.chats.create({
-        model: 'gemini-2.0-flash',
-        history: history,
-      });
-      const response = await chat.sendMessage({ message: post.comment });
-      // AI応答を保存
-      const { error: insertError } = await supabase
-        .from('post_messages_to_ai')
-        .insert({
-          post_id: body.post_id,
-          content: response.text,
-          role: 'model',
-        });
-      if (insertError) {
-        throw new Error('AI応答の保存に失敗しました');
-      }
-      return NextResponse.json({ success: true });
-    }
+    // type分岐（post機能は削除済み）
 
     // --- 既存のroom処理 ---
     if (!body.room_id) {
@@ -282,8 +244,8 @@ export async function POST(req: Request) {
     console.log('[generate-response] User ID:', user_id);
 
     // システムプロンプトの生成
-    const instantReport = await fetchUserInstantReport(supabase, user_id);
-    const chatSettings = await fetchUserChatSettings(supabase, user_id);
+    const instantReport = await fetchUserInstantReport(user_id);
+    const chatSettings = await fetchUserChatSettings(user_id);
     const systemInstruction = `${instantReport}\n${chatSettings}`;
     console.log('[generate-response] System instruction:', systemInstruction);
 
@@ -311,8 +273,8 @@ export async function POST(req: Request) {
       const mediaMsg = mediaMessages[i];
       try {
         const { base64, mimeType } = mediaMsg.type === 'pdf' 
-          ? await fetchPdfAsBase64(supabase, mediaMsg.file_url)
-          : await fetchImageAsBase64(supabase, mediaMsg.file_url);
+          ? await fetchPdfAsBase64(mediaMsg.file_url)
+          : await fetchImageAsBase64(mediaMsg.file_url);
         mediaParts.push({
           inlineData: {
             mimeType,
@@ -342,7 +304,6 @@ export async function POST(req: Request) {
         let contextText = '';
         if (msg.file_name && msg.start_page != null && msg.end_page != null) {
           contextText = await fetchDocumentTranscriptions(
-            supabase,
             msg.file_name,
             msg.start_page,
             msg.end_page
@@ -370,7 +331,6 @@ export async function POST(req: Request) {
       let contextText = '';
       if (lastMessage.file_name && lastMessage.start_page != null && lastMessage.end_page != null) {
         contextText = await fetchDocumentTranscriptions(
-          supabase,
           lastMessage.file_name,
           lastMessage.start_page,
           lastMessage.end_page

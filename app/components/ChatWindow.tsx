@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/utils/supabase';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';

@@ -1,6 +1,6 @@
 'use client';
 
-import { supabase } from '@/utils/supabase';
+// import { supabase } from '@/utils/supabase';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import ChatWindow from '@/app/components/ChatWindow';
@@ -336,7 +336,7 @@ export default function RoomPage() {
     );
   }
 
-  // userProfile がない (未ログイン) の場合の処理は fetchCurrentRoomData 内で router.push('/') により処理される想定
+          // 未ログインの場合の処理は fetchCurrentRoomData 内で router.push('/') により処理される想定
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">

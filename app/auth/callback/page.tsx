@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/utils/supabase';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -10,7 +9,7 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Error:', error);
@@ -23,29 +22,8 @@ export default function AuthCallback() {
           return;
         }
 
-        // ユーザーのメタデータから新規ユーザーかどうかを判定
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
-        if (userError || !user) {
-          router.push(`/error?message=${encodeURIComponent('ユーザー情報の確認に失敗しました。')}`);
-          return;
-        }
-
-        if (!user.created_at || !user.last_sign_in_at) {
-          router.push(`/error?message=${encodeURIComponent('ユーザー情報が不完全です。')}`);
-          return;
-        }
-
-        // created_atとlast_sign_in_atが同じ（数秒以内）なら新規ユーザー
-        const createdAt = new Date(user.created_at).getTime();
-        const lastSignInAt = new Date(user.last_sign_in_at).getTime();
-        const isNewUser = Math.abs(createdAt - lastSignInAt) < 5000; // 5秒以内なら新規ユーザー
-
-        if (isNewUser) {
-          router.push('/profile/initialization');
-        } else {
-          router.push('/');
-        }
+        // プロフィール機能削除のため、すべてのユーザーをホームページに遷移
+        router.push('/');
       } catch (error) {
         console.error('Error:', error);
         router.push(`/error?message=${encodeURIComponent('予期せぬエラーが発生しました。')}`);
