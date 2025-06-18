@@ -65,7 +65,7 @@ export default function Navigation() {
   const { user } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -123,7 +123,7 @@ export default function Navigation() {
       </div>
 
       <div className="flex flex-grow flex-col gap-4">
-        <div className="mt-2 flex flex-col gap-1 overflow-y-auto">
+        <div className="mt-2 flex flex-col gap-1 overflow-y-auto max-h-[500px]">
           {rooms.map((room) => (
             <Link
               key={room.id}
