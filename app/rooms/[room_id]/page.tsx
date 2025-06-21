@@ -140,7 +140,7 @@ export default function RoomPage() {
 
   // ルーム情報の取得
   useEffect(() => {
-    if (!room_id || !db) return;
+    if (!room_id) return;
     const getRoomData = async () => {
       const roomDocRef = doc(db, 'rooms', room_id);
       const roomSnap = await getDoc(roomDocRef);
@@ -156,7 +156,7 @@ export default function RoomPage() {
 
   // メッセージのリアルタイム取得
   useEffect(() => {
-    if (!room_id || !db) return;
+    if (!room_id) return;
 
     const messagesCol = collection(db, 'messages');
     const q = query(
@@ -180,7 +180,7 @@ export default function RoomPage() {
   // メッセージの送信処理
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newMessage.trim() || !db) return;
+    if (!user || !newMessage.trim()) return;
 
     const content = newMessage.trim();
     setNewMessage('');
