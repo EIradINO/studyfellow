@@ -14,6 +14,7 @@ import {
   where,
 } from 'firebase/firestore';
 import Image from 'next/image';
+import { useLayout } from '../context/LayoutContext';
 
 interface Room {
   id: string;
@@ -65,7 +66,7 @@ export default function Navigation() {
   const { user } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const { isNavCollapsed, toggleNav, navWidth } = useLayout();
 
   useEffect(() => {
     if (user) {
@@ -105,15 +106,14 @@ export default function Navigation() {
 
   return (
     <nav
-      className={`fixed top-0 left-0 flex h-screen flex-col bg-gray-200 p-4 shadow-md transition-all duration-300 ease-in-out dark:bg-gray-800 ${
-        isCollapsed ? 'w-[80px]' : 'w-[240px]'
-      }`}
+      className="fixed top-0 left-0 flex h-screen flex-col bg-gray-200 p-4 shadow-md transition-all duration-300 ease-in-out dark:bg-gray-800"
+      style={{ width: `${navWidth}px` }}
     >
       <div className="mb-6">
         <Link
           href="/"
           className={`transition-opacity hover:opacity-80 ${
-            isCollapsed ? 'opacity-0' : 'opacity-100'
+            isNavCollapsed ? 'opacity-0' : 'opacity-100'
           }`}
         >
           <h1 className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -122,8 +122,8 @@ export default function Navigation() {
         </Link>
       </div>
 
-      <div className="flex flex-grow flex-col gap-4">
-        <div className="mt-2 flex flex-col gap-1 overflow-y-auto max-h-[500px]">
+      <div className="flex flex-grow flex-col gap-4 overflow-hidden">
+        <div className="mt-2 flex max-h-[500px] flex-col gap-1 overflow-y-auto">
           {rooms.map((room) => (
             <Link
               key={room.id}
@@ -131,30 +131,36 @@ export default function Navigation() {
               className="flex items-center rounded-md p-2 text-gray-800 hover:bg-gray-300 dark:text-gray-200 dark:hover:bg-gray-700"
               title={room.title}
             >
-              <span className="truncate">{room.title}</span>
+              <span
+                className={`truncate transition-opacity ${
+                  isNavCollapsed ? 'w-0 opacity-0' : 'w-full opacity-100'
+                }`}
+              >
+                {room.title}
+              </span>
             </Link>
           ))}
         </div>
         <Link
           href="/rooms/new"
           className={`flex items-center justify-center font-bold text-white shadow transition-all duration-300 ease-in-out hover:bg-blue-700 ${
-            isCollapsed
+            isNavCollapsed
               ? 'h-12 w-12 self-center rounded-full bg-blue-600'
               : 'w-full rounded-full bg-blue-600 py-3 text-lg'
           }`}
           title="質問する"
         >
-          {isCollapsed ? <NewChatIcon /> : '質問する'}
+          {isNavCollapsed ? <NewChatIcon /> : '質問する'}
         </Link>
       </div>
 
       <div className="mt-4 flex flex-col gap-4 border-t border-gray-300 pt-4 dark:border-gray-700">
         <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={toggleNav}
           className="flex items-center justify-center rounded-md p-2 hover:bg-gray-300 dark:hover:bg-gray-700"
-          title={isCollapsed ? '展開' : '折りたたむ'}
+          title={isNavCollapsed ? '展開' : '折りたたむ'}
         >
-          <ChevronIcon isCollapsed={isCollapsed} />
+          <ChevronIcon isCollapsed={isNavCollapsed} />
         </button>
 
         {user && userData && (
@@ -167,14 +173,14 @@ export default function Navigation() {
               className="rounded-full"
             />
             <div
-              className={`flex flex-col transition-opacity ${
-                isCollapsed ? 'opacity-0' : 'opacity-100'
+              className={`flex flex-col overflow-hidden transition-opacity ${
+                isNavCollapsed ? 'opacity-0' : 'opacity-100'
               }`}
             >
-              <span className="font-semibold text-gray-800 dark:text-gray-200">
+              <span className="truncate font-semibold text-gray-800 dark:text-gray-200">
                 {userData.display_name}
               </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="truncate text-sm text-gray-500 dark:text-gray-400">
                 @{userData.user_name}
               </span>
             </div>
