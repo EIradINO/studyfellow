@@ -19,6 +19,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import Image from 'next/image';
 
 // 図の型定義
 interface Figure {
@@ -53,10 +54,13 @@ const renderFigure = (figure: Figure) => {
           <h3 className="text-lg font-semibold mb-2">{figure.title}</h3>
           {figure.imageUrl ? (
             <div className="flex justify-center mb-4">
-              <img 
+              <Image 
                 src={figure.imageUrl} 
                 alt={figure.title}
+                width={800}
+                height={600}
                 className="max-w-full h-auto border rounded shadow-sm"
+                style={{ width: 'auto', height: 'auto' }}
               />
             </div>
           ) : (
